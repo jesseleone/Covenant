@@ -141,7 +141,7 @@
 .prose-serif h2 { font-size: 20px; }
 .prose-serif h3 { font-size: 17px; }
 .prose-serif strong { font-weight: 600; }
-.prose-serif a {
+.prose-serif a:not(.cite-chip) {
   color: var(--accent);
   text-decoration: underline;
   text-underline-offset: 2px;

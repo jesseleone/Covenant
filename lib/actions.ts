@@ -5,11 +5,12 @@
 // of the DB and appends AuditEvents.
 
 import { nextThursday, parseISO, format } from "date-fns";
-import { PASS_REASON_LABELS, STAGE_LABELS, type AuditEvent, type Covenant, type DB, type PassReason, type Stage, type Tranche } from "@/lib/schema";
+import { PASS_REASON_LABELS, STAGE_LABELS, type AuditEvent, type Covenant, type DB, type DDItem, type ICCondition, type MemoSection, type PassReason, type Stage, type Tranche } from "@/lib/schema";
 import { diffTerms, summarizeChanges } from "@/lib/terms";
 import { evaluateGate } from "@/lib/gates";
 import { canMoveStage } from "@/lib/permissions";
-import { activeTermSet } from "@/lib/selectors";
+import { activeTermSet, computeSnapshot, sectionIsStale } from "@/lib/selectors";
+import { offlineSection } from "@/lib/memo";
 import { commit, newId, nowIso, type ActionResult } from "@/lib/store";
 
 const fail = (error: string): ActionResult => ({ ok: false, error });
@@ -283,5 +284,128 @@ export function discardTermSetDraft(termSetId: string): ActionResult {
     db.tranches = db.tranches.filter((t) => t.termSetId !== ts.id);
     db.covenants = db.covenants.filter((c) => c.termSetId !== ts.id);
     return [{ action: "termset.discard", entity: { type: "term_set", id: ts.id }, dealId: ts.dealId, summary: `Discarded draft term set v${ts.version}` }];
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Due diligence
+// ---------------------------------------------------------------------------
+
+export type NewDDItem = Pick<DDItem, "workstream" | "kind" | "title" | "detail"> & Partial<Pick<DDItem, "severity" | "ownerUserId" | "dueDate">>;
+
+export function addDDItem(dealId: string, item: NewDDItem): ActionResult {
+  return commit("edit_dd", (db) => {
+    if (!item.title.trim()) return fail("Give the item a title.");
+    const id = newId("dd");
+    db.ddItems.push({ id, dealId, status: "open", ...item, title: item.title.trim(), detail: item.detail.trim(), severity: item.kind === "finding" ? item.severity ?? "medium" : undefined });
+    return [{ action: "dd.add", entity: { type: "dd_item", id }, dealId, summary: `Added ${item.kind}: ${item.title.trim()}${item.kind === "finding" && item.severity === "red_flag" ? " (red flag)" : ""}` }];
+  });
+}
+
+export function updateDDItem(id: string, patch: Partial<Pick<DDItem, "status" | "mitigant" | "severity" | "ownerUserId" | "dueDate">>): ActionResult {
+  return commit("edit_dd", (db) => {
+    const d = db.ddItems.find((x) => x.id === id);
+    if (!d) return fail("Item not found.");
+    const changes: string[] = [];
+    for (const [k, v] of Object.entries(patch) as [keyof typeof patch, string | undefined][]) {
+      if ((d[k] ?? "") !== (v ?? "")) changes.push(`${k} ${d[k] ?? "—"} → ${v || "—"}`);
+    }
+    if (changes.length === 0) return [];
+    Object.assign(d, patch);
+    if (patch.mitigant !== undefined && !patch.mitigant.trim()) d.mitigant = undefined;
+    return [{ action: "dd.update", entity: { type: "dd_item", id }, dealId: d.dealId, summary: `Updated "${d.title}": ${changes.join("; ")}` }];
+  });
+}
+
+/** Turn a finding into a proposed IC condition, linked both ways. */
+export function proposeIcCondition(ddItemId: string, description: string, type: ICCondition["type"], ownerUserId: string, dueDate?: string): ActionResult {
+  return commit("edit_dd", (db) => {
+    const d = db.ddItems.find((x) => x.id === ddItemId);
+    if (!d) return fail("Item not found.");
+    if (d.icConditionId) return fail("This finding already has an IC condition.");
+    if (!description.trim()) return fail("Describe the condition.");
+    const pending = db.icEvents.find((e) => e.dealId === d.dealId && e.stage === "final" && e.status === "pending");
+    const id = newId("icc");
+    db.icConditions.push({ id, dealId: d.dealId, icEventId: pending?.id, description: description.trim(), type, ownerUserId, dueDate, status: "proposed", sourceDdItemId: d.id });
+    d.icConditionId = id;
+    d.mitigant = `IC condition proposed: ${description.trim()}`;
+    d.status = "mitigated";
+    return [{ action: "ic.condition_propose", entity: { type: "ic_condition", id }, dealId: d.dealId, summary: `Proposed IC condition from "${d.title}": ${description.trim()}` }];
+  });
+}
+
+// ---------------------------------------------------------------------------
+// IC memo
+// ---------------------------------------------------------------------------
+
+function refreshSection(db: DB, s: MemoSection, content: string, generatedBy: MemoSection["generatedBy"]) {
+  const memo = db.memos.find((m) => m.id === s.memoId)!;
+  s.content = content;
+  s.generatedBy = generatedBy;
+  s.snapshot = computeSnapshot(db, memo.dealId, s.dependencies);
+  s.reviewedBy = undefined;
+  s.reviewedAt = undefined;
+  s.updatedAt = nowIso();
+  const ts = activeTermSet(db, memo.dealId);
+  if (ts) memo.termSetId = ts.id;
+  if (memo.status === "ready_for_ic") memo.status = "draft";
+}
+
+/**
+ * Regenerate sections. `contentById` carries AI-written text (live mode);
+ * without it the offline generator rebuilds the text from records.
+ */
+export function regenerateSections(sectionIds: string[], contentById?: Record<string, string>): ActionResult {
+  return commit("edit_memo", (db) => {
+    const sections = db.memoSections.filter((s) => sectionIds.includes(s.id));
+    if (sections.length === 0) return fail("Nothing to regenerate.");
+    const dealId = db.memos.find((m) => m.id === sections[0].memoId)!.dealId;
+    for (const s of sections) {
+      const live = contentById?.[s.id];
+      refreshSection(db, s, live ?? offlineSection(db, dealId, s) ?? s.content, live ? "ai" : "ai_offline");
+    }
+    return [{
+      action: "memo.regenerate", entity: { type: "memo", id: sections[0].memoId }, dealId,
+      summary: `Regenerated ${sections.map((s) => s.title).join(", ")} (${contentById ? "AI" : "offline"})`,
+    }];
+  });
+}
+
+export function updateSectionContent(sectionId: string, content: string): ActionResult {
+  return commit("edit_memo", (db) => {
+    const s = db.memoSections.find((x) => x.id === sectionId);
+    if (!s) return fail("Section not found.");
+    if (!content.trim()) return fail("A section can't be empty.");
+    refreshSection(db, s, content, "human");
+    const dealId = db.memos.find((m) => m.id === s.memoId)!.dealId;
+    return [{ action: "memo.edit", entity: { type: "memo_section", id: s.id }, dealId, summary: `Edited memo section: ${s.title}` }];
+  });
+}
+
+export function markSectionReviewed(sectionId: string): ActionResult {
+  return commit("edit_memo", (db, actor) => {
+    const s = db.memoSections.find((x) => x.id === sectionId);
+    if (!s) return fail("Section not found.");
+    if (sectionIsStale(db, s)) return fail("Regenerate or edit this stale section before reviewing it.");
+    s.reviewedBy = actor.id;
+    s.reviewedAt = nowIso();
+    const dealId = db.memos.find((m) => m.id === s.memoId)!.dealId;
+    return [{ action: "memo.review", entity: { type: "memo_section", id: s.id }, dealId, summary: `Reviewed memo section: ${s.title}` }];
+  });
+}
+
+export function markMemoReady(memoId: string): ActionResult {
+  return commit("mark_memo_ready", (db) => {
+    const memo = db.memos.find((m) => m.id === memoId);
+    if (!memo) return fail("Memo not found.");
+    const sections = db.memoSections.filter((s) => s.memoId === memoId);
+    const stale = sections.filter((s) => sectionIsStale(db, s));
+    if (stale.length) return fail(`Stale sections: ${stale.map((s) => s.title).join(", ")}.`);
+    const unreviewed = sections.filter((s) => !s.reviewedBy);
+    if (unreviewed.length) return fail(`Not yet reviewed: ${unreviewed.map((s) => s.title).join(", ")}.`);
+    memo.status = "ready_for_ic";
+    const ts = activeTermSet(db, memo.dealId);
+    if (ts) memo.termSetId = ts.id;
+    return [{ action: "memo.ready", entity: { type: "memo", id: memo.id }, dealId: memo.dealId, field: "status", before: "draft", after: "ready_for_ic", summary: `Marked the ${memo.memoType} memo v${memo.version} ready for IC (term set v${ts?.version})` }];
   });
 }

@@ -141,3 +141,49 @@ describe("term sets", async () => {
     expect(activeTermSet(db(), "deal_larch")?.version).toBe(1);
   });
 });
+
+describe("diligence and memo", async () => {
+  const { proposeIcCondition, correctField, regenerateSections, markSectionReviewed, markMemoReady, updateSectionContent } = await import("@/lib/actions");
+  const { sectionIsStale } = await import("@/lib/selectors");
+  const { requirementsFor } = await import("@/lib/gates");
+  const { staleReasons } = await import("@/lib/memo");
+  const { renderMarkdown } = await import("@/lib/render/tokens");
+  const larchSections = () => db().memoSections.filter((s) => s.memoId === "memo_larch_final_v1");
+
+  it("proposes an IC condition from a red flag, which satisfies that part of the IC gate", () => {
+    expect(proposeIcCondition("dd_larch_conc", "Customer reference call with top customer and review of MSA renewal terms prior to close", "pre_close", "u_sam").ok).toBe(true);
+    const dd = db().ddItems.find((d) => d.id === "dd_larch_conc")!;
+    const cond = db().icConditions.find((c) => c.id === dd.icConditionId)!;
+    expect(cond).toMatchObject({ status: "proposed", sourceDdItemId: "dd_larch_conc", type: "pre_close" });
+    expect(requirementsFor(db(), deal("deal_larch"), "ic").map((u) => u.label)).toEqual(["Final IC memo marked ready for IC"]);
+  });
+
+  it("explains staleness and clears it on regeneration, with text that reflects the QoE", () => {
+    correctField("ef_larch_adj_ebitda_ltm", 16.3, "doc_larch_qoe", 2);
+    const fin = larchSections().find((s) => s.key === "financial_analysis")!;
+    expect(staleReasons(db(), fin).find((r) => r.dep === "field:adj_ebitda_ltm")).toMatchObject({ before: "$17.5M", after: "$16.3M" });
+    const stale = larchSections().filter((s) => sectionIsStale(db(), s)).map((s) => s.id);
+    expect(regenerateSections(stale).ok).toBe(true);
+    expect(larchSections().filter((s) => sectionIsStale(db(), s))).toHaveLength(0);
+    const regenerated = larchSections().find((s) => s.key === "financial_analysis")!;
+    expect(regenerated.generatedBy).toBe("ai_offline");
+    expect(regenerated.reviewedBy).toBeUndefined();
+    const md = renderMarkdown(db(), "deal_larch", regenerated.content);
+    expect(md).toMatch(/\$16\.3M/);
+    expect(md).toMatch(/QoE p\.2/);
+    expect(regenerated.content).not.toMatch(/16\.3|17\.5/); // figures are tokens, never typed
+  });
+
+  it("requires every section fresh and reviewed before a VP marks the memo ready", () => {
+    signIn("u_marcus");
+    expect(markMemoReady("memo_larch_final_v1").ok).toBe(false);
+    for (const s of larchSections()) expect(markSectionReviewed(s.id).ok).toBe(true);
+    signIn("u_jordan");
+    expect(markMemoReady("memo_larch_final_v1").ok).toBe(false); // analyst
+    signIn("u_marcus");
+    expect(markMemoReady("memo_larch_final_v1").ok).toBe(true);
+    expect(db().memos.find((m) => m.id === "memo_larch_final_v1")!.status).toBe("ready_for_ic");
+    updateSectionContent(larchSections()[0].id, "Edited text.");
+    expect(db().memos.find((m) => m.id === "memo_larch_final_v1")!.status).toBe("draft");
+  });
+});

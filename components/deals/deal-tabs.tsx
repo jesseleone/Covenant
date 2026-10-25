@@ -1,26 +1,26 @@
 "use client";
 
-// Step 1: every deal tab exists and shows its records plainly. Later steps
-// replace these with the full interactive views.
+// Deal tab router. The deeper tabs live in their own files; IC & Approvals,
+// Stakeholders and History are still the plain views from step 1.
 
 import { useMemo } from "react";
-import { WORKSTREAMS, type DB, type Deal } from "@/lib/schema";
+import type { DB, Deal } from "@/lib/schema";
 import { useDB } from "@/lib/store";
 import {
-  companyById, currentAffiliation, personById, relationshipStrength, sectionIsStale,
+  companyById, currentAffiliation, personById, relationshipStrength,
   userById, lastTouchAt,
 } from "@/lib/selectors";
 import { findPrecedents } from "@/lib/queries";
-import { renderMarkdown } from "@/lib/render/tokens";
 import { fmtDate, fmtSpread, fmtUsdM, fmtX, titleCase } from "@/lib/format";
 import { Avatar, Card, Chip, EmptyState, Label, Section, Table, TD, TH, THead, TR, TextLink } from "@/components/ui/primitives";
-import { DecisionChip, SeverityChip, StrengthChip, DealStatusChip } from "@/components/ui/chips";
-import { Markdown } from "@/components/common/markdown";
+import { DecisionChip, StrengthChip, DealStatusChip } from "@/components/ui/chips";
 import { AuditList, NoteList } from "@/components/common/timeline";
 import { OverviewTab } from "./overview-tab";
 import { FinancialsTab } from "./financials-tab";
 import { DocumentsTab } from "./documents-tab";
 import { SecuritiesTab } from "./securities-tab";
+import { DiligenceTab } from "./diligence-tab";
+import { MemoTab } from "./memo-tab";
 
 export const DEAL_TABS = [
   { slug: "overview", label: "Overview" },
@@ -41,7 +41,7 @@ export function DealTab({ tab, deal }: { tab: string; deal: Deal }) {
     case "overview": return <OverviewTab db={db} deal={deal} />;
     case "financials": return <FinancialsTab db={db} deal={deal} />;
     case "securities": return <SecuritiesTab db={db} deal={deal} />;
-    case "diligence": return <Diligence db={db} deal={deal} />;
+    case "diligence": return <DiligenceTab db={db} deal={deal} />;
     case "memo": return <MemoTab db={db} deal={deal} />;
     case "ic": return <IC db={db} deal={deal} />;
     case "stakeholders": return <Stakeholders db={db} deal={deal} />;
@@ -62,70 +62,7 @@ type P = { db: DB; deal: Deal };
 
 // ---------------------------------------------------------------------------
 
-function Diligence({ db, deal }: P) {
-  const items = db.ddItems.filter((d) => d.dealId === deal.id);
-  if (items.length === 0) return <EmptyState title="No diligence items yet" />;
-  const groups = WORKSTREAMS.map((w) => [w, items.filter((i) => i.workstream === w)] as const).filter(([, xs]) => xs.length);
-  return (
-    <Table>
-      <THead><tr><TH>Workstream</TH><TH>Item</TH><TH>Kind</TH><TH>Severity</TH><TH>Status</TH><TH>Mitigant</TH><TH>Owner</TH><TH>Due</TH></tr></THead>
-      <tbody>
-        {groups.flatMap(([w, xs]) => xs.map((d, i) => (
-          <TR key={d.id}>
-            <TD className="text-text-2">{i === 0 ? (w === "qoe" ? "QoE" : w === "kyc" ? "KYC" : w === "it" ? "IT" : titleCase(w)) : ""}</TD>
-            <TD className="max-w-[360px]"><div className="font-medium">{d.title}</div><div className="text-[12px] text-text-3">{d.detail}</div></TD>
-            <TD className="text-text-2">{titleCase(d.kind)}</TD>
-            <TD><SeverityChip severity={d.severity} /></TD>
-            <TD><Chip tone={d.status === "open" ? "warn" : d.status === "closed" ? "success" : "neutral"}>{titleCase(d.status)}</Chip></TD>
-            <TD className="max-w-[260px] text-text-2">{d.mitigant ?? "—"}</TD>
-            <TD>{d.ownerUserId ? userById(db, d.ownerUserId)?.name : "—"}</TD>
-            <TD className="whitespace-nowrap text-text-2">{fmtDate(d.dueDate)}</TD>
-          </TR>
-        )))}
-      </tbody>
-    </Table>
-  );
-}
-
 // ---------------------------------------------------------------------------
-
-function MemoTab({ db, deal }: P) {
-  const memos = db.memos.filter((m) => m.dealId === deal.id);
-  if (memos.length === 0) return <EmptyState title="No memo yet">Memo generation arrives in a later build step.</EmptyState>;
-  return (
-    <div className="space-y-6">
-      {memos.map((memo) => {
-        const sections = db.memoSections.filter((s) => s.memoId === memo.id).sort((a, b) => a.order - b.order);
-        return (
-          <div key={memo.id} className="space-y-6">
-            <div className="flex flex-wrap items-center gap-2 text-text-2">
-              <span className="font-serif text-[18px] text-text">{titleCase(memo.memoType)} memo · v{memo.version}</span>
-              <Chip tone={memo.status === "draft" ? "neutral" : "accent"}>{titleCase(memo.status)}</Chip>
-              <span className="text-[12px] text-text-3">Based on term set v{db.termSets.find((t) => t.id === memo.termSetId)?.version}</span>
-            </div>
-            <Card className="mx-auto max-w-[820px] space-y-8 px-8 py-8">
-              {sections.map((s) => {
-                const stale = sectionIsStale(db, s);
-                const reviewer = userById(db, s.reviewedBy);
-                return (
-                  <section key={s.id}>
-                    <div className="mb-2 flex flex-wrap items-center gap-2">
-                      <h3 className="font-serif text-[20px] font-medium">{s.title}</h3>
-                      <Chip tone="outline">{s.generatedBy === "human" ? "Human" : s.generatedBy === "ai" ? "AI" : "AI (offline)"}</Chip>
-                      {stale && <Chip tone="warn">Stale</Chip>}
-                      {reviewer ? <Chip tone="success">Reviewed · {reviewer.name}</Chip> : <Chip>Not reviewed</Chip>}
-                    </div>
-                    <Markdown>{renderMarkdown(db, deal.id, s.content)}</Markdown>
-                  </section>
-                );
-              })}
-            </Card>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 
 // ---------------------------------------------------------------------------
 

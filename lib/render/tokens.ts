@@ -11,7 +11,7 @@ import {
 import { fmtBps, fmtFieldValue, fmtMonthYear, fmtPct, fmtSpread, fmtUsdM, fmtX } from "@/lib/format";
 
 export type Cite = { label: string; href: string };
-export type Resolved = { text: string; cite?: Cite; unconfirmed?: boolean };
+export type Resolved = { text: string; label?: string; cite?: Cite; unconfirmed?: boolean; status?: string };
 
 export type Segment =
   | { kind: "text"; text: string }
@@ -63,25 +63,27 @@ export function resolveToken(db: DB, dealId: string, token: string): Resolved {
     const label = `${docShortName(documentById(db, v.field.documentId)?.docType)} p.${v.field.page}`;
     return {
       text: fmtFieldValue(v.field),
+      label: v.field.label + (v.field.period ? ` · ${v.field.period}` : ""),
       cite: { label, href: `/deals/${dealId}/financials?field=${v.field.fieldKey}` },
       unconfirmed: v.unconfirmed,
+      status: v.field.status,
     };
   }
 
   if (kind === "metric") {
     const unconfirmed = !!fieldValue(db, dealId, "adj_ebitda_ltm")?.unconfirmed;
     switch (path) {
-      case "total_leverage": return { text: fmtX(totalLeverage(db, dealId)), cite: finCite, unconfirmed };
-      case "cushion_pct": return { text: fmtPct(cushionPct(db, dealId)), cite: tsCite, unconfirmed };
-      case "funded_debt": return { text: fmtUsdM(fundedDebt(db, ts?.id)), cite: tsCite };
-      case "facility_size": return { text: fmtUsdM(facilitySize(db, ts?.id)), cite: tsCite };
+      case "total_leverage": return { text: fmtX(totalLeverage(db, dealId)), label: "Total leverage at close (funded debt ÷ LTM adj. EBITDA)", cite: finCite, unconfirmed };
+      case "cushion_pct": return { text: fmtPct(cushionPct(db, dealId)), label: "Covenant cushion (1 − leverage ÷ covenant level)", cite: tsCite, unconfirmed };
+      case "funded_debt": return { text: fmtUsdM(fundedDebt(db, ts?.id)), label: "Funded debt at close", cite: tsCite };
+      case "facility_size": return { text: fmtUsdM(facilitySize(db, ts?.id)), label: "Total facility size", cite: tsCite };
       case "ev_multiple": {
         const ev = numField(db, dealId, "ev"); const e = numField(db, dealId, "adj_ebitda_ltm");
-        return { text: ev && e ? fmtX(ev / e, 1) : "n/a", cite: finCite, unconfirmed };
+        return { text: ev && e ? fmtX(ev / e, 1) : "n/a", label: "Purchase multiple (EV ÷ LTM adj. EBITDA)", cite: finCite, unconfirmed };
       }
       case "ebitda_margin": {
         const r = numField(db, dealId, "revenue_ltm"); const e = numField(db, dealId, "adj_ebitda_ltm");
-        return { text: r && e ? fmtPct(e / r) : "n/a", cite: finCite, unconfirmed };
+        return { text: r && e ? fmtPct(e / r) : "n/a", label: "LTM adj. EBITDA margin", cite: finCite, unconfirmed };
       }
     }
     return { text: "[unknown metric]" };
@@ -96,15 +98,15 @@ export function resolveToken(db: DB, dealId: string, token: string): Resolved {
       commitment: fmtUsdM(t.commitment), funded: fmtUsdM(t.fundedAtClose), maturity: fmtMonthYear(t.maturityDate),
       call: t.callProtection, hold: fmtUsdM(t.fundHold),
     }[attr] ?? "[unknown]";
-    return { text, cite: tsCite };
+    return { text, label: `${t.name} · ${attr}`, cite: tsCite };
   }
 
   if (kind === "covenant") {
     const [metric, attr] = path.split(".");
     const cov = covenantFor(db, ts?.id, metric as "total_leverage");
     if (!cov) return { text: "[no covenant]" };
-    if (attr === "current") return { text: fmtX(currentCovenantLevel(cov, db.settings.today)), cite: tsCite };
-    if (attr === "schedule") return { text: cov.levels.map((l) => fmtX(l.level)).join(" / "), cite: tsCite };
+    if (attr === "current") return { text: fmtX(currentCovenantLevel(cov, db.settings.today)), label: "Covenant level in force", cite: tsCite };
+    if (attr === "schedule") return { text: cov.levels.map((l) => fmtX(l.level)).join(" / "), label: "Covenant step-down schedule", cite: tsCite };
     return { text: "[unknown]" };
   }
 
