@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import { useParams } from "next/navigation";
 import { useDB } from "@/lib/store";
 import { dealById } from "@/lib/selectors";
@@ -19,7 +20,9 @@ export default function DealPage() {
     <div className="mx-auto max-w-[1280px] space-y-5 px-6 py-6">
       <DealHeader deal={deal} />
       <TabNav tabs={DEAL_TABS} active={tab} base={`/deals/${deal.id}`} />
-      <DealTab tab={tab} deal={deal} />
+      <Suspense>
+        <DealTab tab={tab} deal={deal} />
+      </Suspense>
     </div>
   );
 }

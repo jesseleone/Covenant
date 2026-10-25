@@ -166,3 +166,19 @@
 .prose-serif > :last-child {
   margin-bottom: 0;
 }
+
+/* Source highlights in the document viewer */
+mark.hl-soft {
+  background: color-mix(in srgb, var(--warn) 16%, transparent);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 1px;
+}
+mark.hl-active {
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 1px;
+  transition: background-color 180ms;
+}

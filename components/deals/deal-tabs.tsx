@@ -8,17 +8,19 @@ import { Lock } from "lucide-react";
 import { WORKSTREAMS, type DB, type Deal } from "@/lib/schema";
 import { useDB } from "@/lib/store";
 import {
-  companyById, currentAffiliation, documentById, fieldValue, personById, relationshipStrength, sectionIsStale, termSetsFor,
+  companyById, currentAffiliation, personById, relationshipStrength, sectionIsStale, termSetsFor,
   tranchesFor, userById, lastTouchAt,
 } from "@/lib/selectors";
 import { findPrecedents } from "@/lib/queries";
 import { renderMarkdown } from "@/lib/render/tokens";
-import { fmtBps, fmtDate, fmtFieldValue, fmtMonthYear, fmtPct, fmtSpread, fmtUsdM, fmtX, titleCase } from "@/lib/format";
+import { fmtBps, fmtDate, fmtMonthYear, fmtSpread, fmtUsdM, fmtX, titleCase } from "@/lib/format";
 import { Avatar, Card, Chip, EmptyState, Label, Section, Table, TD, TH, THead, TR, TextLink } from "@/components/ui/primitives";
-import { DecisionChip, FieldStatusChip, SeverityChip, StrengthChip, TermSetStatusChip, DealStatusChip } from "@/components/ui/chips";
+import { DecisionChip, SeverityChip, StrengthChip, TermSetStatusChip, DealStatusChip } from "@/components/ui/chips";
 import { Markdown } from "@/components/common/markdown";
 import { AuditList, NoteList } from "@/components/common/timeline";
 import { OverviewTab } from "./overview-tab";
+import { FinancialsTab } from "./financials-tab";
+import { DocumentsTab } from "./documents-tab";
 
 export const DEAL_TABS = [
   { slug: "overview", label: "Overview" },
@@ -37,13 +39,13 @@ export function DealTab({ tab, deal }: { tab: string; deal: Deal }) {
   const db = useDB();
   switch (tab) {
     case "overview": return <OverviewTab db={db} deal={deal} />;
-    case "financials": return <Financials db={db} deal={deal} />;
+    case "financials": return <FinancialsTab db={db} deal={deal} />;
     case "securities": return <Securities db={db} deal={deal} />;
     case "diligence": return <Diligence db={db} deal={deal} />;
     case "memo": return <MemoTab db={db} deal={deal} />;
     case "ic": return <IC db={db} deal={deal} />;
     case "stakeholders": return <Stakeholders db={db} deal={deal} />;
-    case "documents": return <Documents db={db} deal={deal} />;
+    case "documents": return <DocumentsTab db={db} deal={deal} />;
     case "notes": return <NoteList db={db} notes={db.notes.filter((n) => n.subject.type === "deal" && n.subject.id === deal.id)} />;
     case "history": return <History db={db} deal={deal} />;
     default: return <EmptyState title="Unknown tab" />;
@@ -55,53 +57,6 @@ type P = { db: DB; deal: Deal };
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-
-function Financials({ db, deal }: P) {
-  const fields = db.extractedFields.filter((f) => f.dealId === deal.id)
-    .sort((a, b) => (a.status === "proposed" ? 0 : 1) - (b.status === "proposed" ? 0 : 1) || a.confidence - b.confidence);
-  const periods = db.financialPeriods.filter((p) => p.dealId === deal.id);
-  return (
-    <div className="space-y-8">
-      <Section title="Extracted values">
-        <Table>
-          <THead><tr><TH>Field</TH><TH className="text-right">Value</TH><TH>Period</TH><TH>Source</TH><TH className="text-right">Confidence</TH><TH>Status</TH></tr></THead>
-          <tbody>
-            {fields.map((f) => (
-              <TR key={f.id}>
-                <TD>{f.label}</TD>
-                <TD className="text-right font-medium tabular-nums">{fmtFieldValue(f)}</TD>
-                <TD className="text-text-2">{f.period ?? "—"}</TD>
-                <TD className="font-mono text-[12px] text-text-2">{documentById(db, f.documentId)?.docType.toUpperCase()} p.{f.page}</TD>
-                <TD className={`text-right tabular-nums ${f.confidence < 0.8 ? "text-warn" : "text-text-2"}`}>{Math.round(f.confidence * 100)}%</TD>
-                <TD><FieldStatusChip status={f.status} /></TD>
-              </TR>
-            ))}
-          </tbody>
-        </Table>
-      </Section>
-      <Section title="Financial periods">
-        <Table>
-          <THead><tr><TH>Period</TH><TH>Case</TH><TH className="text-right">Revenue</TH><TH className="text-right">Adj. EBITDA</TH><TH className="text-right">Margin</TH><TH className="text-right">Capex</TH></tr></THead>
-          <tbody>
-            {periods.map((p) => {
-              const ebitda = p.adjEbitdaFieldKey ? Number(fieldValue(db, deal.id, p.adjEbitdaFieldKey)?.value ?? p.adjEbitda) : p.adjEbitda;
-              return (
-                <TR key={p.id}>
-                  <TD>{p.label}</TD>
-                  <TD><Chip tone={p.case === "actual" ? "neutral" : "outline"}>{titleCase(p.case)}</Chip></TD>
-                  <TD className="text-right tabular-nums">{fmtUsdM(p.revenue)}</TD>
-                  <TD className="text-right tabular-nums">{ebitda ? fmtUsdM(ebitda) : "—"}</TD>
-                  <TD className="text-right tabular-nums text-text-2">{ebitda ? fmtPct(ebitda / p.revenue) : "—"}</TD>
-                  <TD className="text-right tabular-nums text-text-2">{fmtUsdM(p.capex)}</TD>
-                </TR>
-              );
-            })}
-          </tbody>
-        </Table>
-      </Section>
-    </div>
-  );
-}
 
 // ---------------------------------------------------------------------------
 
@@ -335,32 +290,6 @@ function Stakeholders({ db, deal }: P) {
 }
 
 // ---------------------------------------------------------------------------
-
-function Documents({ db, deal }: P) {
-  const docs = db.documents.filter((d) => d.dealId === deal.id);
-  const citedIn = (docId: string) =>
-    db.extractedFields.filter((f) => f.documentId === docId).length +
-    db.memoSections.filter((s) => s.content.includes(`document:${docId}`)).length;
-  return (
-    <Table>
-      <THead><tr><TH>Title</TH><TH>Type</TH><TH className="text-right">Version</TH><TH>Source</TH><TH className="text-right">Pages</TH><TH>Extraction</TH><TH className="text-right">Cited</TH><TH>Added</TH></tr></THead>
-      <tbody>
-        {docs.map((d) => (
-          <TR key={d.id}>
-            <TD className="font-medium">{d.title}</TD>
-            <TD><Chip tone="outline">{d.docType === "qoe" ? "QoE" : d.docType === "cim" ? "CIM" : titleCase(d.docType)}</Chip></TD>
-            <TD className="text-right tabular-nums">v{d.version}</TD>
-            <TD className="text-text-2">{d.source === "vdr" ? "Data room" : titleCase(d.source)}</TD>
-            <TD className="text-right tabular-nums">{d.pages.length}</TD>
-            <TD>{d.extractionStatus === "done" ? <Chip tone="success">Extracted</Chip> : <Chip>Not extracted</Chip>}</TD>
-            <TD className="text-right tabular-nums text-text-2">{citedIn(d.id)}</TD>
-            <TD className="text-text-2">{fmtDate(d.uploadedAt)}</TD>
-          </TR>
-        ))}
-      </tbody>
-    </Table>
-  );
-}
 
 // ---------------------------------------------------------------------------
 

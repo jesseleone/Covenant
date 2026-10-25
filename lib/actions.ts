@@ -117,3 +117,94 @@ export function updateDealText(dealId: string, field: "summary" | "thesis", valu
     return [{ action: "deal.edit", entity: { type: "deal", id: dealId }, dealId, field, summary: `Edited the ${field}` }];
   });
 }
+
+// ---------------------------------------------------------------------------
+// Extraction review: AI proposes, a person confirms or corrects
+// ---------------------------------------------------------------------------
+
+const fieldLabel = (db: DB, docId: string, page: number) => {
+  const doc = db.documents.find((d) => d.id === docId);
+  const short = doc?.docType === "qoe" ? "QoE" : doc?.docType === "cim" ? "CIM" : doc?.docType === "term_sheet" ? "Term sheet" : "Doc";
+  return `${short} p.${page}`;
+};
+
+const display = (v: number | string, unit: string) =>
+  typeof v === "string" ? v : unit === "usd_m" ? `$${v.toFixed(1)}M` : unit === "pct" ? `${v}%` : String(v);
+
+export function confirmField(fieldId: string): ActionResult {
+  return commit("review_field", (db, actor) => {
+    const f = db.extractedFields.find((x) => x.id === fieldId);
+    if (!f) return fail("Value not found.");
+    if (f.status !== "proposed") return fail("Already reviewed.");
+    f.status = "confirmed";
+    f.reviewedBy = actor.id;
+    f.reviewedAt = nowIso();
+    return [{
+      action: "field.confirm", entity: { type: "extracted_field", id: f.id }, dealId: f.dealId, field: f.label,
+      before: "proposed", after: "confirmed",
+      summary: `Confirmed ${f.label}: ${display(f.value, f.unit)} (${fieldLabel(db, f.documentId, f.page)})`,
+    }];
+  });
+}
+
+export function confirmAllAbove(dealId: string, threshold = 0.9): ActionResult & { count?: number } {
+  let count = 0;
+  const r = commit("review_field", (db, actor) => {
+    const at = nowIso();
+    const fields = db.extractedFields.filter((f) => f.dealId === dealId && f.status === "proposed" && f.confidence >= threshold);
+    for (const f of fields) { f.status = "confirmed"; f.reviewedBy = actor.id; f.reviewedAt = at; }
+    count = fields.length;
+    if (count === 0) return fail(`No proposed values at or above ${Math.round(threshold * 100)}% confidence.`);
+    return [{
+      action: "field.confirm_bulk", entity: { type: "deal", id: dealId }, dealId,
+      summary: `Confirmed ${count} extracted value${count === 1 ? "" : "s"} with confidence ≥ ${threshold.toFixed(2)}`,
+    }];
+  });
+  return { ...r, count };
+}
+
+/** Find the sentence (or table row) on a page that states `value`, to use as the quote. */
+export function findQuote(markdown: string, value: number | string): string | undefined {
+  const needle = typeof value === "number" ? value.toFixed(1).replace(/\.0$/, "") : value;
+  const variants = typeof value === "number" ? [value.toFixed(1), needle] : [needle];
+  const sentences = markdown.split("\n").filter((l) => !l.trim().startsWith("|")).flatMap((l) => l.split(/(?<=\.)\s+/));
+  for (const v of variants) {
+    const s = sentences.find((x) => x.includes(v));
+    if (s) return s.replace(/^[-#*\s]+/, "").trim();
+  }
+  for (const v of variants) {
+    const row = markdown.split("\n").find((l) => l.trim().startsWith("|") && l.includes(v));
+    if (row) return row.trim().replace(/^\|\s*|\s*\|$/g, "");
+  }
+  return undefined;
+}
+
+/**
+ * Replace an extracted value with a corrected one from another source.
+ * The original value and source are kept in `correctedFrom`.
+ */
+export function correctField(fieldId: string, value: number | string, documentId: string, page: number, note?: string): ActionResult {
+  return commit("review_field", (db, actor) => {
+    const f = db.extractedFields.find((x) => x.id === fieldId);
+    if (!f) return fail("Value not found.");
+    const doc = db.documents.find((d) => d.id === documentId && d.dealId === f.dealId);
+    const pg = doc?.pages.find((p) => p.n === page);
+    if (!doc || !pg) return fail("Choose a source page from this deal's documents.");
+    if (typeof f.value === "number" && (typeof value !== "number" || !Number.isFinite(value))) return fail("Enter a number.");
+
+    const before = `${display(f.value, f.unit)} (${fieldLabel(db, f.documentId, f.page)})`;
+    f.correctedFrom = { value: f.value, documentId: f.documentId, page: f.page };
+    f.value = value;
+    f.documentId = documentId;
+    f.page = page;
+    f.quote = findQuote(pg.markdown, value) ?? f.quote;
+    f.status = "corrected";
+    f.reviewedBy = actor.id;
+    f.reviewedAt = nowIso();
+    const after = `${display(value, f.unit)} (${fieldLabel(db, documentId, page)})`;
+    return [{
+      action: "field.correct", entity: { type: "extracted_field", id: f.id }, dealId: f.dealId, field: f.label, before, after,
+      summary: `Corrected ${f.label}: ${before} → ${after}${note?.trim() ? `. ${note.trim()}` : ""}`,
+    }];
+  });
+}
