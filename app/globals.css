@@ -1,0 +1,168 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Warm, claude.ai-inspired palette. Light first, dark under .dark. */
+:root {
+  --bg: #faf9f5;
+  --sidebar: #f5f4ed;
+  --surface: #ffffff;
+  --surface-2: #f0eee6;
+  --border: #e8e6dc;
+  --border-strong: #d1cfc5;
+  --text: #141413;
+  --text-2: #5e5d59;
+  --text-3: #87867f;
+  --accent: #c96442;
+  --accent-hover: #b5583a;
+  --accent-soft: #f5e6df;
+  --success: #3f7d4e;
+  --success-soft: #e5efe6;
+  --warn: #b7791f;
+  --warn-soft: #f7edda;
+  --danger: #b53333;
+  --danger-soft: #f6e1e0;
+  --focus: #3898ec;
+  --shadow-pop: 0 4px 24px rgba(0, 0, 0, 0.06);
+  --shadow-composer: 0 2px 12px rgba(0, 0, 0, 0.05);
+}
+
+.dark {
+  --bg: #262624;
+  --sidebar: #1f1e1d;
+  --surface: #30302e;
+  --surface-2: #3a3936;
+  --border: #3e3d39;
+  --border-strong: #52514c;
+  --text: #faf9f5;
+  --text-2: #c2c0b6;
+  --text-3: #9a9890;
+  --accent: #d97757;
+  --accent-hover: #e08a6d;
+  --accent-soft: #4a2f25;
+  --success: #7fb98c;
+  --success-soft: #26372b;
+  --warn: #e0b36a;
+  --warn-soft: #3e3322;
+  --danger: #e07a7a;
+  --danger-soft: #472828;
+  --focus: #3898ec;
+  --shadow-pop: 0 4px 24px rgba(0, 0, 0, 0.35);
+  --shadow-composer: 0 2px 12px rgba(0, 0, 0, 0.3);
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-sidebar: var(--sidebar);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-text: var(--text);
+  --color-text-2: var(--text-2);
+  --color-text-3: var(--text-3);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-soft: var(--accent-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-focus: var(--focus);
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-source-serif), Georgia, "Times New Roman", serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, SFMono-Regular, monospace;
+
+  --shadow-pop: var(--shadow-pop);
+  --shadow-composer: var(--shadow-composer);
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  html,
+  body {
+    height: 100%;
+  }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  ::selection {
+    background: var(--accent-soft);
+  }
+}
+
+/* Long-form reading text: memo bodies, assistant chat answers, documents. */
+.prose-serif {
+  font-family: var(--font-serif);
+  font-size: 16px;
+  line-height: 1.65;
+  color: var(--text);
+}
+.prose-serif p,
+.prose-serif ul,
+.prose-serif ol,
+.prose-serif table {
+  margin: 0 0 0.85em;
+}
+.prose-serif ul {
+  list-style: disc;
+  padding-left: 1.3em;
+}
+.prose-serif ol {
+  list-style: decimal;
+  padding-left: 1.4em;
+}
+.prose-serif li {
+  margin: 0.25em 0;
+}
+.prose-serif h1,
+.prose-serif h2,
+.prose-serif h3 {
+  font-weight: 500;
+  margin: 0.9em 0 0.45em;
+  line-height: 1.3;
+}
+.prose-serif h1 { font-size: 26px; }
+.prose-serif h2 { font-size: 20px; }
+.prose-serif h3 { font-size: 17px; }
+.prose-serif strong { font-weight: 600; }
+.prose-serif a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.prose-serif table {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  border-collapse: collapse;
+  width: 100%;
+}
+.prose-serif th,
+.prose-serif td {
+  border-bottom: 1px solid var(--border);
+  padding: 6px 10px;
+  text-align: left;
+}
+.prose-serif th {
+  color: var(--text-3);
+  font-weight: 500;
+  font-size: 12px;
+}
+.prose-serif > :last-child {
+  margin-bottom: 0;
+}
