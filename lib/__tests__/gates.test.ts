@@ -53,7 +53,7 @@ describe("stage gates", () => {
   it("checks every stage passed through, and lets deals move backward", () => {
     const fjord = deal(seed, "deal_fjord"); // sourced, draft term set
     const g = evaluateGate(seed, fjord, "ic");
-    expect(g.unmet.map((u) => u.label)).toEqual(expect.arrayContaining(["Issue term set v1"]));
+    expect(g.unmet.map((u) => u.label)).toEqual(expect.arrayContaining(["Term set v1 issued"]));
     expect(evaluateGate(seed, at(deal(seed, "deal_larch"), "diligence"), "screening").ok).toBe(true);
   });
 });

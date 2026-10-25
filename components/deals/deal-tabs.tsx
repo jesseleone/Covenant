@@ -5,7 +5,7 @@
 
 import { useMemo } from "react";
 import { Lock } from "lucide-react";
-import { STRATEGY_LABELS, WORKSTREAMS, type DB, type Deal } from "@/lib/schema";
+import { WORKSTREAMS, type DB, type Deal } from "@/lib/schema";
 import { useDB } from "@/lib/store";
 import {
   companyById, currentAffiliation, documentById, fieldValue, personById, relationshipStrength, sectionIsStale, termSetsFor,
@@ -14,10 +14,11 @@ import {
 import { findPrecedents } from "@/lib/queries";
 import { renderMarkdown } from "@/lib/render/tokens";
 import { fmtBps, fmtDate, fmtFieldValue, fmtMonthYear, fmtPct, fmtSpread, fmtUsdM, fmtX, titleCase } from "@/lib/format";
-import { Avatar, Card, Chip, EmptyState, KV, Label, Section, Table, TD, TH, THead, TR, TextLink } from "@/components/ui/primitives";
+import { Avatar, Card, Chip, EmptyState, Label, Section, Table, TD, TH, THead, TR, TextLink } from "@/components/ui/primitives";
 import { DecisionChip, FieldStatusChip, SeverityChip, StrengthChip, TermSetStatusChip, DealStatusChip } from "@/components/ui/chips";
 import { Markdown } from "@/components/common/markdown";
 import { AuditList, NoteList } from "@/components/common/timeline";
+import { OverviewTab } from "./overview-tab";
 
 export const DEAL_TABS = [
   { slug: "overview", label: "Overview" },
@@ -35,7 +36,7 @@ export const DEAL_TABS = [
 export function DealTab({ tab, deal }: { tab: string; deal: Deal }) {
   const db = useDB();
   switch (tab) {
-    case "overview": return <Overview db={db} deal={deal} />;
+    case "overview": return <OverviewTab db={db} deal={deal} />;
     case "financials": return <Financials db={db} deal={deal} />;
     case "securities": return <Securities db={db} deal={deal} />;
     case "diligence": return <Diligence db={db} deal={deal} />;
@@ -52,57 +53,6 @@ export function DealTab({ tab, deal }: { tab: string; deal: Deal }) {
 type P = { db: DB; deal: Deal };
 
 // ---------------------------------------------------------------------------
-
-function Overview({ db, deal }: P) {
-  const redFlags = db.ddItems.filter((d) => d.dealId === deal.id && d.severity === "red_flag" && d.status !== "closed");
-  const conditions = db.icConditions.filter((c) => c.dealId === deal.id);
-  const recent = db.auditEvents.filter((e) => e.dealId === deal.id).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 8);
-  return (
-    <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
-      <div className="space-y-6">
-        <Section title="Summary"><p className="prose-serif">{deal.summary}</p></Section>
-        <Section title="Thesis"><p className="prose-serif">{deal.thesis}</p></Section>
-        <Section title="Open red flags">
-          {redFlags.length === 0 ? <p className="text-text-3">None.</p> : (
-            <ul className="space-y-2">{redFlags.map((d) => (
-              <li key={d.id} className="flex items-start gap-2"><SeverityChip severity={d.severity} /><span>{d.title}</span></li>
-            ))}</ul>
-          )}
-        </Section>
-        {conditions.length > 0 && (
-          <Section title="IC conditions">
-            <ul className="space-y-2">{conditions.map((c) => (
-              <li key={c.id} className="flex items-start gap-2"><Chip tone={c.status === "satisfied" ? "success" : "warn"}>{titleCase(c.status)}</Chip><span>{c.description}</span></li>
-            ))}</ul>
-          </Section>
-        )}
-        <Section title="Recent activity"><AuditList db={db} events={recent} /></Section>
-      </div>
-      <aside className="space-y-4">
-        <Card className="grid grid-cols-2 gap-4 p-4">
-          <KV label="Strategy">{STRATEGY_LABELS[deal.strategy]}</KV>
-          <KV label="Deal type">{deal.dealType.toUpperCase().replace("_", "-")}</KV>
-          <KV label="Requested size">{fmtUsdM(deal.requestedSize)}</KV>
-          <KV label="Fund hold target">{fmtUsdM(deal.fundHoldTarget)}</KV>
-          <KV label="Expected close">{fmtDate(deal.expectedClose)}</KV>
-          <KV label="Sector">{deal.sector}</KV>
-        </Card>
-        <Card className="space-y-2.5 p-4">
-          <Label>Deal team</Label>
-          {deal.teamUserIds.map((id) => {
-            const u = userById(db, id)!;
-            return (
-              <div key={id} className="flex items-center gap-2.5">
-                <Avatar initials={u.initials} size={26} />
-                <div className="leading-tight"><div>{u.name}</div><div className="text-[12px] text-text-3">{u.title}{id === deal.leadUserId ? " · Lead" : ""}</div></div>
-              </div>
-            );
-          })}
-        </Card>
-      </aside>
-    </div>
-  );
-}
 
 // ---------------------------------------------------------------------------
 
