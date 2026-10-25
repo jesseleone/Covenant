@@ -5,7 +5,8 @@
 // of the DB and appends AuditEvents.
 
 import { nextThursday, parseISO, format } from "date-fns";
-import { PASS_REASON_LABELS, STAGE_LABELS, type AuditEvent, type DB, type PassReason, type Stage } from "@/lib/schema";
+import { PASS_REASON_LABELS, STAGE_LABELS, type AuditEvent, type Covenant, type DB, type PassReason, type Stage, type Tranche } from "@/lib/schema";
+import { diffTerms, summarizeChanges } from "@/lib/terms";
 import { evaluateGate } from "@/lib/gates";
 import { canMoveStage } from "@/lib/permissions";
 import { activeTermSet } from "@/lib/selectors";
@@ -206,5 +207,81 @@ export function correctField(fieldId: string, value: number | string, documentId
       action: "field.correct", entity: { type: "extracted_field", id: f.id }, dealId: f.dealId, field: f.label, before, after,
       summary: `Corrected ${f.label}: ${before} → ${after}${note?.trim() ? `. ${note.trim()}` : ""}`,
     }];
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Term sets (securities): copy-on-write versions, edited only as drafts
+// ---------------------------------------------------------------------------
+
+/** Copy the latest version into a new editable draft. */
+export function createTermSetVersion(dealId: string): ActionResult & { termSetId?: string } {
+  let termSetId: string | undefined;
+  const r = commit("edit_terms", (db, actor) => {
+    const sets = db.termSets.filter((t) => t.dealId === dealId).sort((a, b) => a.version - b.version);
+    const parent = sets.at(-1);
+    if (!parent) return fail("This deal has no term set to copy.");
+    if (parent.status === "draft") return fail(`v${parent.version} is still a draft. Issue or discard it first.`);
+    termSetId = newId("ts");
+    db.termSets.push({
+      id: termSetId, dealId, version: parent.version + 1,
+      label: parent.label === "ic_approved" || parent.label === "closing" ? "closing" : parent.label,
+      status: "draft", parentId: parent.id, createdBy: actor.id, createdAt: nowIso(),
+    });
+    for (const t of db.tranches.filter((x) => x.termSetId === parent.id)) db.tranches.push({ ...t, id: newId("tr"), termSetId: termSetId! });
+    for (const c of db.covenants.filter((x) => x.termSetId === parent.id)) db.covenants.push({ ...structuredClone(c), id: newId("cov"), termSetId: termSetId! });
+    return [{ action: "termset.create", entity: { type: "term_set", id: termSetId! }, dealId, summary: `Created term set v${parent.version + 1} (draft) from v${parent.version}` }];
+  });
+  return { ...r, termSetId };
+}
+
+/** Replace a draft's tranches and covenants; the audit entry lists what changed. */
+export function saveTermSetDraft(termSetId: string, tranches: Tranche[], covenants: Covenant[]): ActionResult {
+  return commit("edit_terms", (db) => {
+    const ts = db.termSets.find((t) => t.id === termSetId);
+    if (!ts) return fail("Term set not found.");
+    if (ts.status !== "draft") return fail(`v${ts.version} is ${ts.status}; create a new version to change it.`);
+    if (tranches.length === 0) return fail("A term set needs at least one tranche.");
+    for (const t of tranches) {
+      if (!(t.commitment > 0)) return fail(`${t.name}: commitment must be positive.`);
+      if (t.fundedAtClose < 0 || t.fundedAtClose > t.commitment) return fail(`${t.name}: funded at close must be between 0 and the commitment.`);
+      if (t.fundHold < 0 || t.fundHold > t.commitment) return fail(`${t.name}: hold must be between 0 and the commitment.`);
+    }
+    for (const c of covenants) if (c.levels.some((l) => !(l.level > 0) || !l.from)) return fail("Each covenant step needs a date and a positive level.");
+
+    const before = { tranches: db.tranches.filter((t) => t.termSetId === ts.id), covenants: db.covenants.filter((c) => c.termSetId === ts.id) };
+    const after = {
+      tranches: tranches.map((t) => ({ ...t, termSetId: ts.id })),
+      covenants: covenants.map((c) => ({ ...c, termSetId: ts.id, levels: [...c.levels].sort((a, b) => a.from.localeCompare(b.from)) })),
+    };
+    const changes = diffTerms(before, after);
+    if (changes.length === 0) return [];
+    db.tranches = [...db.tranches.filter((t) => t.termSetId !== ts.id), ...after.tranches];
+    db.covenants = [...db.covenants.filter((c) => c.termSetId !== ts.id), ...after.covenants];
+    return [{ action: "termset.edit", entity: { type: "term_set", id: ts.id }, dealId: ts.dealId, summary: `Edited term set v${ts.version}: ${summarizeChanges(changes)}` }];
+  });
+}
+
+export function issueTermSet(termSetId: string): ActionResult {
+  return commit("issue_terms", (db) => {
+    const ts = db.termSets.find((t) => t.id === termSetId);
+    if (!ts) return fail("Term set not found.");
+    if (ts.status !== "draft") return fail(`v${ts.version} is already ${ts.status}.`);
+    ts.status = "issued";
+    if (ts.label === "proposal") ts.label = "term_sheet";
+    return [{ action: "termset.issue", entity: { type: "term_set", id: ts.id }, dealId: ts.dealId, field: "status", before: "draft", after: "issued", summary: `Issued term set v${ts.version}` }];
+  });
+}
+
+export function discardTermSetDraft(termSetId: string): ActionResult {
+  return commit("edit_terms", (db) => {
+    const ts = db.termSets.find((t) => t.id === termSetId);
+    if (!ts) return fail("Term set not found.");
+    if (ts.status !== "draft") return fail("Only drafts can be discarded.");
+    if (db.termSets.filter((t) => t.dealId === ts.dealId).length === 1) return fail("A deal must keep at least one term set.");
+    db.termSets = db.termSets.filter((t) => t.id !== ts.id);
+    db.tranches = db.tranches.filter((t) => t.termSetId !== ts.id);
+    db.covenants = db.covenants.filter((c) => c.termSetId !== ts.id);
+    return [{ action: "termset.discard", entity: { type: "term_set", id: ts.id }, dealId: ts.dealId, summary: `Discarded draft term set v${ts.version}` }];
   });
 }

@@ -100,3 +100,44 @@ describe("extraction review", async () => {
     expect(confirmField("ef_larch_maintenance_capex").ok).toBe(false);
   });
 });
+
+describe("term sets", async () => {
+  const { createTermSetVersion, saveTermSetDraft, issueTermSet, discardTermSetDraft, correctField } = await import("@/lib/actions");
+  const { cushionPct, activeTermSet } = await import("@/lib/selectors");
+
+  it("only VPs/MDs create versions; a new version copies tranches and covenants as a draft", () => {
+    expect(createTermSetVersion("deal_larch").ok).toBe(false); // analyst
+    signIn("u_marcus");
+    const r = createTermSetVersion("deal_larch");
+    expect(r.ok).toBe(true);
+    const ts = db().termSets.find((t) => t.id === r.termSetId)!;
+    expect(ts).toMatchObject({ version: 2, status: "draft", parentId: "ts_larch_v1", label: "term_sheet" });
+    expect(db().tranches.filter((t) => t.termSetId === ts.id)).toHaveLength(3);
+    expect(createTermSetVersion("deal_larch").ok).toBe(false); // draft already open
+  });
+
+  it("covenant reset to 7.50x restores cushion to ~26.4% after the EBITDA correction", () => {
+    correctField("ef_larch_adj_ebitda_ltm", 16.3, "doc_larch_qoe", 2);
+    signIn("u_marcus");
+    const { termSetId } = createTermSetVersion("deal_larch");
+    const tr = db().tranches.filter((t) => t.termSetId === termSetId);
+    const cov = db().covenants.filter((c) => c.termSetId === termSetId).map((c) => ({
+      ...c, levels: [{ from: "2026-12-31", level: 7.5 }, { from: "2027-12-31", level: 7.0 }, { from: "2028-12-31", level: 6.5 }],
+    }));
+    expect(saveTermSetDraft(termSetId!, tr, cov).ok).toBe(true);
+    expect(db().auditEvents.at(-1)!.summary).toMatch(/7\.00x \/ 6\.50x \/ 6\.00x → 7\.50x \/ 7\.00x \/ 6\.50x/);
+    expect(cushionPct(db(), "deal_larch")! * 100).toBeCloseTo(26.4, 1);
+    expect(issueTermSet(termSetId!).ok).toBe(true);
+    expect(activeTermSet(db(), "deal_larch")).toMatchObject({ version: 2, status: "issued" });
+    expect(saveTermSetDraft(termSetId!, tr, cov).ok).toBe(false); // issued is read-only
+  });
+
+  it("validates tranches and can discard a draft", () => {
+    signIn("u_marcus");
+    const { termSetId } = createTermSetVersion("deal_larch");
+    const tr = db().tranches.filter((t) => t.termSetId === termSetId).map((t) => (t.key === "tl" ? { ...t, fundedAtClose: 200 } : t));
+    expect(saveTermSetDraft(termSetId!, tr, []).ok).toBe(false);
+    expect(discardTermSetDraft(termSetId!).ok).toBe(true);
+    expect(activeTermSet(db(), "deal_larch")?.version).toBe(1);
+  });
+});

@@ -4,23 +4,23 @@
 // replace these with the full interactive views.
 
 import { useMemo } from "react";
-import { Lock } from "lucide-react";
 import { WORKSTREAMS, type DB, type Deal } from "@/lib/schema";
 import { useDB } from "@/lib/store";
 import {
-  companyById, currentAffiliation, personById, relationshipStrength, sectionIsStale, termSetsFor,
-  tranchesFor, userById, lastTouchAt,
+  companyById, currentAffiliation, personById, relationshipStrength, sectionIsStale,
+  userById, lastTouchAt,
 } from "@/lib/selectors";
 import { findPrecedents } from "@/lib/queries";
 import { renderMarkdown } from "@/lib/render/tokens";
-import { fmtBps, fmtDate, fmtMonthYear, fmtSpread, fmtUsdM, fmtX, titleCase } from "@/lib/format";
+import { fmtDate, fmtSpread, fmtUsdM, fmtX, titleCase } from "@/lib/format";
 import { Avatar, Card, Chip, EmptyState, Label, Section, Table, TD, TH, THead, TR, TextLink } from "@/components/ui/primitives";
-import { DecisionChip, SeverityChip, StrengthChip, TermSetStatusChip, DealStatusChip } from "@/components/ui/chips";
+import { DecisionChip, SeverityChip, StrengthChip, DealStatusChip } from "@/components/ui/chips";
 import { Markdown } from "@/components/common/markdown";
 import { AuditList, NoteList } from "@/components/common/timeline";
 import { OverviewTab } from "./overview-tab";
 import { FinancialsTab } from "./financials-tab";
 import { DocumentsTab } from "./documents-tab";
+import { SecuritiesTab } from "./securities-tab";
 
 export const DEAL_TABS = [
   { slug: "overview", label: "Overview" },
@@ -40,7 +40,7 @@ export function DealTab({ tab, deal }: { tab: string; deal: Deal }) {
   switch (tab) {
     case "overview": return <OverviewTab db={db} deal={deal} />;
     case "financials": return <FinancialsTab db={db} deal={deal} />;
-    case "securities": return <Securities db={db} deal={deal} />;
+    case "securities": return <SecuritiesTab db={db} deal={deal} />;
     case "diligence": return <Diligence db={db} deal={deal} />;
     case "memo": return <MemoTab db={db} deal={deal} />;
     case "ic": return <IC db={db} deal={deal} />;
@@ -59,54 +59,6 @@ type P = { db: DB; deal: Deal };
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-
-function Securities({ db, deal }: P) {
-  const sets = termSetsFor(db, deal.id).reverse();
-  if (sets.length === 0) return <EmptyState title="No term set yet" />;
-  return (
-    <div className="space-y-8">
-      {sets.map((ts) => {
-        const tranches = tranchesFor(db, ts.id);
-        const covs = db.covenants.filter((c) => c.termSetId === ts.id);
-        return (
-          <Section
-            key={ts.id}
-            title={<span className="flex items-center gap-2">Term set v{ts.version} {ts.status === "locked" && <Lock size={15} className="text-text-3" />}</span>}
-            actions={<div className="flex items-center gap-2"><Chip tone="outline">{titleCase(ts.label)}</Chip><TermSetStatusChip status={ts.status} /></div>}
-          >
-            <Table>
-              <THead><tr><TH>Tranche</TH><TH>Lien</TH><TH className="text-right">Commitment</TH><TH className="text-right">Funded</TH><TH className="text-right">Hold</TH><TH>Spread</TH><TH>Floor</TH><TH className="text-right">OID</TH><TH>Call</TH><TH>Maturity</TH><TH className="text-right">Amort.</TH></tr></THead>
-              <tbody>
-                {tranches.map((t) => (
-                  <TR key={t.id}>
-                    <TD className="font-medium">{t.name}</TD><TD>{t.lienRank}</TD>
-                    <TD className="text-right tabular-nums">{fmtUsdM(t.commitment)}</TD>
-                    <TD className="text-right tabular-nums">{fmtUsdM(t.fundedAtClose)}</TD>
-                    <TD className="text-right tabular-nums">{fmtUsdM(t.fundHold)}</TD>
-                    <TD className="tabular-nums">{fmtSpread(t.spreadBps)}</TD>
-                    <TD className="tabular-nums">{fmtBps(t.floorBps)}</TD>
-                    <TD className="text-right tabular-nums">{t.oidPct.toFixed(1)}%</TD>
-                    <TD>{t.callProtection}</TD>
-                    <TD>{fmtMonthYear(t.maturityDate)}</TD>
-                    <TD className="text-right tabular-nums">{t.amortPctPerYear}%</TD>
-                  </TR>
-                ))}
-              </tbody>
-            </Table>
-            {covs.map((c) => (
-              <Card key={c.id} className="p-4">
-                <Label>Covenant · {titleCase(c.metric)} ({c.operator}), tested {c.testFrequency}</Label>
-                <div className="mt-1 flex flex-wrap gap-4">
-                  {c.levels.map((l) => <div key={l.from}><span className="font-medium tabular-nums">{fmtX(l.level)}</span> <span className="text-text-3">from {fmtDate(l.from)}</span></div>)}
-                </div>
-              </Card>
-            ))}
-          </Section>
-        );
-      })}
-    </div>
-  );
-}
 
 // ---------------------------------------------------------------------------
 
