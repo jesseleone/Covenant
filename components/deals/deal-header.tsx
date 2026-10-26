@@ -4,7 +4,8 @@ import Link from "next/link";
 import { ArrowRight, Check, MoreHorizontal } from "lucide-react";
 import { STAGES, STAGE_LABELS, PASS_REASON_LABELS, type Deal } from "@/lib/schema";
 import { nextStage } from "@/lib/gates";
-import { useDB } from "@/lib/store";
+import { useCurrentUser, useDB } from "@/lib/store";
+import { canMoveStage } from "@/lib/permissions";
 import { companyById, dealMetrics } from "@/lib/selectors";
 import { fmtBps, fmtDate, fmtPct, fmtSpread, fmtUsdM, fmtX } from "@/lib/format";
 import { Button, Chip, TextLink, cn } from "@/components/ui/primitives";
@@ -15,6 +16,7 @@ import { useStageMover } from "./stage-move";
 export function DealHeader({ deal }: { deal: Deal }) {
   const db = useDB();
   const mover = useStageMover();
+  const user = useCurrentUser();
   const m = dealMetrics(db, deal.id);
   const borrower = companyById(db, deal.borrowerCompanyId);
   const sponsor = companyById(db, deal.sponsorCompanyId);
@@ -41,7 +43,7 @@ export function DealHeader({ deal }: { deal: Deal }) {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {active && next && (
+          {active && next && user && canMoveStage(user.role, next) && (
             <Button variant="primary" onClick={() => mover.request(deal, next)}>
               {next === "ic" ? "Submit to IC" : `Advance to ${STAGE_LABELS[next]}`}<ArrowRight size={15} />
             </Button>

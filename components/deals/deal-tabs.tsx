@@ -1,26 +1,23 @@
 "use client";
 
-// Deal tab router. The deeper tabs live in their own files; IC & Approvals,
-// Stakeholders and History are still the plain views from step 1.
+// Deal tab router. Stakeholders and Notes are still the plain step-1 views;
+// every other tab lives in its own file.
 
-import { useMemo } from "react";
 import type { DB, Deal } from "@/lib/schema";
 import { useDB } from "@/lib/store";
-import {
-  companyById, currentAffiliation, personById, relationshipStrength,
-  userById, lastTouchAt,
-} from "@/lib/selectors";
-import { findPrecedents } from "@/lib/queries";
-import { fmtDate, fmtSpread, fmtUsdM, fmtX, titleCase } from "@/lib/format";
-import { Avatar, Card, Chip, EmptyState, Label, Section, Table, TD, TH, THead, TR, TextLink } from "@/components/ui/primitives";
-import { DecisionChip, StrengthChip, DealStatusChip } from "@/components/ui/chips";
-import { AuditList, NoteList } from "@/components/common/timeline";
+import { companyById, currentAffiliation, lastTouchAt, personById, relationshipStrength, userById } from "@/lib/selectors";
+import { fmtDate, titleCase } from "@/lib/format";
+import { Avatar, Card, EmptyState, Label, Table, TD, TH, THead, TR, TextLink } from "@/components/ui/primitives";
+import { StrengthChip } from "@/components/ui/chips";
+import { NoteList } from "@/components/common/timeline";
 import { OverviewTab } from "./overview-tab";
 import { FinancialsTab } from "./financials-tab";
 import { DocumentsTab } from "./documents-tab";
 import { SecuritiesTab } from "./securities-tab";
 import { DiligenceTab } from "./diligence-tab";
 import { MemoTab } from "./memo-tab";
+import { IcTab } from "./ic-tab";
+import { HistoryTab } from "./history-tab";
 
 export const DEAL_TABS = [
   { slug: "overview", label: "Overview" },
@@ -43,107 +40,16 @@ export function DealTab({ tab, deal }: { tab: string; deal: Deal }) {
     case "securities": return <SecuritiesTab db={db} deal={deal} />;
     case "diligence": return <DiligenceTab db={db} deal={deal} />;
     case "memo": return <MemoTab db={db} deal={deal} />;
-    case "ic": return <IC db={db} deal={deal} />;
+    case "ic": return <IcTab db={db} deal={deal} />;
     case "stakeholders": return <Stakeholders db={db} deal={deal} />;
     case "documents": return <DocumentsTab db={db} deal={deal} />;
     case "notes": return <NoteList db={db} notes={db.notes.filter((n) => n.subject.type === "deal" && n.subject.id === deal.id)} />;
-    case "history": return <History db={db} deal={deal} />;
+    case "history": return <HistoryTab db={db} deal={deal} />;
     default: return <EmptyState title="Unknown tab" />;
   }
 }
 
-type P = { db: DB; deal: Deal };
-
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-
-function IC({ db, deal }: P) {
-  const events = db.icEvents.filter((e) => e.dealId === deal.id).sort((a, b) => b.date.localeCompare(a.date));
-  const conditions = db.icConditions.filter((c) => c.dealId === deal.id);
-  const da = db.devilsAdvocate.filter((d) => d.dealId === deal.id);
-  const precedents = useMemo(() => (deal.status === "active" ? findPrecedents(db, deal.id) : []), [db, deal]);
-  return (
-    <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
-      <div className="space-y-6">
-        <Section title="IC events">
-          {events.length === 0 ? <p className="text-text-3">No IC events yet.</p> : events.map((e) => (
-            <Card key={e.id} className="space-y-3 p-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-medium">{e.stage === "final" ? "Final IC" : "Screening IC"}</span>
-                <span className="text-text-3">· {fmtDate(e.date)}</span>
-                <DecisionChip decision={e.decision} />
-                {e.approvedHold && <span className="text-[12px] text-text-3">Approved hold {fmtUsdM(e.approvedHold)}</span>}
-              </div>
-              {e.votes.length > 0 && (
-                <div className="flex flex-wrap gap-3 text-[13px]">
-                  {e.votes.map((v) => <span key={v.userId} className="flex items-center gap-1.5"><Avatar initials={userById(db, v.userId)!.initials} size={20} />{userById(db, v.userId)!.name}: <DecisionChip decision={v.vote} /></span>)}
-                </div>
-              )}
-              {e.qa.length > 0 && (
-                <ul className="space-y-2 border-t border-border pt-3">
-                  {e.qa.map((q, i) => (
-                    <li key={i}>
-                      <div><span className="text-text-3">{userById(db, q.askedBy)?.name}:</span> {q.question}</div>
-                      {q.answer && <div className="text-text-2">→ {q.answer}</div>}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Card>
-          ))}
-        </Section>
-        {conditions.length > 0 && (
-          <Section title="Conditions">
-            <Table>
-              <THead><tr><TH>Condition</TH><TH>Type</TH><TH>Owner</TH><TH>Due</TH><TH>Status</TH></tr></THead>
-              <tbody>{conditions.map((c) => (
-                <TR key={c.id}><TD>{c.description}</TD><TD className="text-text-2">{titleCase(c.type)}</TD><TD>{userById(db, c.ownerUserId)?.name}</TD><TD>{fmtDate(c.dueDate)}</TD><TD><Chip tone={c.status === "satisfied" ? "success" : "warn"}>{titleCase(c.status)}</Chip></TD></TR>
-              ))}</tbody>
-            </Table>
-          </Section>
-        )}
-      </div>
-      <aside className="space-y-6">
-        {da.length > 0 && (
-          <Section title="Devil's advocate">
-            <div className="space-y-3">{da.map((q) => (
-              <Card key={q.id} className="p-4">
-                <div className="font-medium">{q.question}</div>
-                <div className="mt-1 text-[13px] text-text-2">{q.rationale}</div>
-              </Card>
-            ))}</div>
-          </Section>
-        )}
-        {precedents.length > 0 && (
-          <Section title="Precedents">
-            <div className="space-y-2">{precedents.map((p) => (
-              <Card key={p.deal.id} className="p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <TextLink href={`/deals/${p.deal.id}/overview`} className="font-medium">{p.deal.name}</TextLink>
-                  <DealStatusChip deal={p.deal} />
-                </div>
-                <div className="mt-1 text-[12px] text-text-3">{fmtX(p.leverage)} · {fmtSpread(p.spreadBps)} · {fmtUsdM(p.deal.requestedSize)} · match {Math.round(p.score * 100)}</div>
-              </Card>
-            ))}</div>
-          </Section>
-        )}
-      </aside>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-
-function Stakeholders({ db, deal }: P) {
+function Stakeholders({ db, deal }: { db: DB; deal: Deal }) {
   const rows = db.stakeholders.filter((s) => s.dealId === deal.id);
   return (
     <div className="space-y-6">
@@ -176,13 +82,4 @@ function Stakeholders({ db, deal }: P) {
       </Card>
     </div>
   );
-}
-
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-
-function History({ db, deal }: P) {
-  const events = db.auditEvents.filter((e) => e.dealId === deal.id).sort((a, b) => b.at.localeCompare(a.at));
-  return <Card className="px-4 py-1"><AuditList db={db} events={events} /></Card>;
 }

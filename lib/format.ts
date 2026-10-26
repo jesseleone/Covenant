@@ -35,3 +35,5 @@ export function fmtFieldValue(f: Pick<ExtractedField, "value" | "unit" | "fieldK
 export const titleCase = (s: string) => s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
 export const companyTypeLabel = (t: string) => (t === "qoe_provider" ? "QoE provider" : titleCase(t));
+
+export const termSetLabel = (l: string) => (l === "ic_approved" ? "IC-approved" : titleCase(l));

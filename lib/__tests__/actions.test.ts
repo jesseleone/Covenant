@@ -187,3 +187,72 @@ describe("diligence and memo", async () => {
     expect(db().memos.find((m) => m.id === "memo_larch_final_v1")!.status).toBe("draft");
   });
 });
+
+describe("IC decision", async () => {
+  const { moveStage, proposeIcCondition, recordVote, decideIc, satisfyCondition, removeIcCondition, createTermSetVersion } = await import("@/lib/actions");
+  const { evaluateGate } = await import("@/lib/gates");
+
+  const toIc = () => {
+    signIn("u_jordan");
+    proposeIcCondition("dd_larch_conc", "Customer reference call prior to close", "pre_close", "u_sam");
+    signIn("u_marcus");
+    moveStage("deal_larch", "ic", "test");
+    return db().icEvents.find((e) => e.dealId === "deal_larch" && e.status === "pending")!.id;
+  };
+
+  it("only IC members vote and decide; a decision needs a vote", () => {
+    const ev = toIc();
+    expect(recordVote(ev, "approve").ok).toBe(false); // VP
+    signIn("u_robert");
+    expect(decideIc(ev, "approve_with_conditions").ok).toBe(false); // no votes
+    expect(recordVote(ev, "approve_with_conditions", "Customer call is essential").ok).toBe(true);
+    expect(recordVote(ev, "approve").ok).toBe(true); // changes own vote
+    expect(db().icEvents.find((e) => e.id === ev)!.votes).toHaveLength(1);
+  });
+
+  it("approval locks the active term set, opens conditions and unlocks Documentation", () => {
+    const ev = toIc();
+    signIn("u_robert");
+    expect(evaluateGate(db(), deal("deal_larch"), "documentation").ok).toBe(false);
+    recordVote(ev, "approve_with_conditions");
+    signIn("u_aisha");
+    recordVote(ev, "approve_with_conditions");
+    expect(decideIc(ev, "approve_with_conditions", 115).ok).toBe(true);
+    const ts = db().termSets.find((t) => t.id === "ts_larch_v1")!;
+    expect(ts).toMatchObject({ status: "locked", label: "ic_approved", lockedByIcEventId: ev });
+    expect(db().icConditions.find((c) => c.dealId === "deal_larch")!.status).toBe("open");
+    expect(db().memos.find((m) => m.id === "memo_larch_final_v1")!.status).toBe("final");
+    expect(evaluateGate(db(), deal("deal_larch"), "documentation").ok).toBe(true);
+    expect(moveStage("deal_larch", "documentation").ok).toBe(true); // IC member may move an approved deal
+    signIn("u_marcus");
+    expect(createTermSetVersion("deal_larch").termSetId).toBeTruthy(); // changes now need a new version
+    expect(db().termSets.find((t) => t.dealId === "deal_larch" && t.version === 2)!.label).toBe("closing");
+  });
+
+  it("won't approve over a draft term set, and conditions are satisfied only once open", () => {
+    const ev = toIc();
+    createTermSetVersion("deal_larch");
+    signIn("u_robert");
+    recordVote(ev, "approve");
+    expect(decideIc(ev, "approve").ok).toBe(false);
+    const c = db().icConditions.find((x) => x.dealId === "deal_larch")!;
+    signIn("u_jordan");
+    expect(satisfyCondition(c.id).ok).toBe(false);
+  });
+
+  it("removing a proposed condition reopens its finding", () => {
+    toIc();
+    signIn("u_robert");
+    const c = db().icConditions.find((x) => x.dealId === "deal_larch")!;
+    expect(removeIcCondition(c.id).ok).toBe(true);
+    expect(db().ddItems.find((d) => d.id === "dd_larch_conc")).toMatchObject({ status: "open", icConditionId: undefined, mitigant: undefined });
+  });
+
+  it("a decline passes the deal", () => {
+    const ev = toIc();
+    signIn("u_robert");
+    recordVote(ev, "decline");
+    expect(decideIc(ev, "decline", undefined, "Concentration too high").ok).toBe(true);
+    expect(deal("deal_larch")).toMatchObject({ status: "passed", passReason: "credit_quality" });
+  });
+});

@@ -10,7 +10,7 @@ import { can } from "@/lib/permissions";
 import { newId, useCurrentUser } from "@/lib/store";
 import { currentCovenantLevel, metricsAsOf, numField, termSetsFor, userById } from "@/lib/selectors";
 import { TRANCHE_FIELDS, covenantSchedule, diffTerms } from "@/lib/terms";
-import { fmtBps, fmtDate, fmtMonthYear, fmtPct, fmtSpread, fmtUsdM, fmtX, titleCase } from "@/lib/format";
+import { fmtBps, fmtDate, fmtMonthYear, fmtPct, fmtSpread, fmtUsdM, fmtX, titleCase, termSetLabel } from "@/lib/format";
 import { Button, Card, EmptyState, Label, Section, cn } from "@/components/ui/primitives";
 import { Dialog, Tip } from "@/components/ui/menu";
 
@@ -68,7 +68,7 @@ export function SecuritiesTab({ db, deal }: { db: DB; deal: Deal }) {
               className={cn("flex h-8 items-center gap-1.5 rounded-[10px] border px-2.5 text-[13px]", t.id === selected.id && !compare ? "border-accent bg-accent-soft text-accent" : "border-border bg-surface text-text-2 hover:text-text")}>
               {t.status === "locked" && <Lock size={12} />}
               <span className="font-medium">v{t.version}</span>
-              <span className="text-[12px] opacity-80">{titleCase(t.label)}</span>
+              <span className="text-[12px] opacity-80">{termSetLabel(t.label)}</span>
               <span className="text-[11px] opacity-70">· {t.status}</span>
             </button>
           ))}
@@ -468,7 +468,7 @@ function CompareView({ db, deal, sets }: { db: DB; deal: Deal; sets: TermSet[] }
 
   const picker = (value: string, set: (v: string) => void) => (
     <select value={value} onChange={(e) => set(e.target.value)} className="h-8 rounded-[8px] border border-border-strong bg-surface px-2 text-[13px]">
-      {sets.map((t) => <option key={t.id} value={t.id}>v{t.version} · {titleCase(t.label)} · {t.status}</option>)}
+      {sets.map((t) => <option key={t.id} value={t.id}>v{t.version} · {termSetLabel(t.label)} · {t.status}</option>)}
     </select>
   );
 
