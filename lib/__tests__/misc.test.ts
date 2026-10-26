@@ -71,3 +71,14 @@ describe("memo tokens", () => {
     }
   });
 });
+
+describe("memo figure guard", async () => {
+  const { typedFigures } = await import("@/lib/memo");
+  it("flags typed money, multiples and spreads but not tokens or percentages", () => {
+    expect(typedFigures("Leverage of {{metric:total_leverage}} at {{tranche:tl.spread}}, 94% renewal, cushion vs 25% guideline.")).toEqual([]);
+    expect(typedFigures("EBITDA of $16.3M gives 5.52x at S+525.")).toEqual(["$16.3M", "5.52x", "S+525"]);
+  });
+  it("the seeded memo has no typed figures", () => {
+    for (const s of db.memoSections) expect(typedFigures(s.content), s.id).toEqual([]);
+  });
+});

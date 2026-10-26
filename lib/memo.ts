@@ -167,3 +167,13 @@ export function offlineSection(db: DB, dealId: string, section: MemoSection): st
       return null;
   }
 }
+
+/**
+ * Financial figures typed as text instead of tokens ($ amounts, multiples,
+ * spreads). Percentages are allowed: they appear in quoted source sentences
+ * and policy thresholds.
+ */
+export function typedFigures(content: string): string[] {
+  const stripped = content.replace(/\{\{[^}]+\}\}/g, " ").replace(/\[\[cite:[^\]]+\]\]/g, " ");
+  return [...new Set(stripped.match(/\$\s?\d[\d,.]*\s?[MBK]?\b|\b\d+\.\d+x\b|\bS\+\d+\b/g) ?? [])];
+}

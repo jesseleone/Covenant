@@ -162,7 +162,7 @@ export const DevilsAdvocateSchema = z.object({
   id, dealId: id, question: z.string(), rationale: z.string(), precedentDealIds: z.array(id),
 });
 
-export const ChatThreadSchema = z.object({ id, title: z.string(), ownerId: id, createdAt: iso });
+export const ChatThreadSchema = z.object({ id, title: z.string(), ownerId: id, createdAt: iso, scope: z.array(entityRef).optional() });
 
 export const ChatMessageSchema = z.object({
   id, threadId: id, role: z.enum(["user", "assistant"]), content: z.string(),

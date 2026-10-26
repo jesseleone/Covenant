@@ -14,7 +14,7 @@ import { chatMessages, chatThreads } from "./chat";
  * Bump when the seed changes: browsers holding an older copy rebuild from the
  * new seed on next load (see lib/store.ts).
  */
-export const SEED_VERSION = 1;
+export const SEED_VERSION = 2;
 
 export const TODAY = "2026-10-25";
 
@@ -35,7 +35,7 @@ Beacon's pharmacy management software is mission-critical for independent and re
     id: "ms_beacon_rec", memoId: beaconMemo.id, key: "recommendation", title: "Recommendation", order: 2, generatedBy: "ai",
     reviewedBy: "u_elena", reviewedAt: "2026-10-16T15:00:00.000Z", updatedAt: "2026-10-15T16:00:00.000Z",
     dependencies: ["metric:total_leverage", "metric:cushion_pct"],
-    content: `The deal team recommends **approval**. Leverage of {{metric:total_leverage}} is full but within our 6.5x cap for recurring-revenue borrowers, with {{metric:cushion_pct}} covenant cushion.`,
+    content: `The deal team recommends **approval**. Leverage of {{metric:total_leverage}} is full but within our leverage cap for recurring-revenue borrowers, with {{metric:cushion_pct}} covenant cushion.`,
   },
 ];
 

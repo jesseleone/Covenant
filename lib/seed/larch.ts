@@ -446,7 +446,7 @@ A maximum total leverage covenant is tested quarterly, stepping down {{covenant:
     content: `Third-party diligence is substantially complete:
 
 - **Quality of earnings (Brightline Advisory):** report received. See Financial Analysis for the treatment of add-backs [[cite:document:doc_larch_qoe#p2|QoE p.2]].
-- **Legal:** two minor wage-and-hour claims; insured, with aggregate exposure below $0.3M.
+- **Legal:** two minor wage-and-hour claims, insured and immaterial.
 - **Insurance, environmental (Phase I clean), background checks and KYC:** complete with no findings.
 - **Open items:** IT security assessment (due 6 Nov), tax structure memo (due 10 Nov) and UCC lien searches in four states.
 

@@ -5,7 +5,7 @@
 // of the DB and appends AuditEvents.
 
 import { nextThursday, parseISO, format } from "date-fns";
-import { PASS_REASON_LABELS, STAGE_LABELS, type AuditEvent, type Covenant, type DB, type DDItem, type ICCondition, type ICEvent, type MemoSection, type PassReason, type Stage, type Tranche } from "@/lib/schema";
+import { NOTE_LABELS, PASS_REASON_LABELS, STAGE_LABELS, type AuditEvent, type Covenant, type DB, type DDItem, type ICCondition, type ICEvent, type MemoSection, type Note, type PassReason, type Stage, type Tranche } from "@/lib/schema";
 import { diffTerms, summarizeChanges } from "@/lib/terms";
 import { evaluateGate } from "@/lib/gates";
 import { canMoveStage } from "@/lib/permissions";
@@ -544,5 +544,18 @@ export function decideIc(icEventId: string, decision: NonNullable<ICEvent["decis
       summary: `${e.stage === "final" ? "Final" : "Screening"} IC decision: ${VOTE_LABEL[decision]}${approvedHold ? ` (hold ${approvedHold.toFixed(1)}M)` : ""}${note?.trim() ? `. ${note.trim()}` : ""}`,
     });
     return audit;
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Notes
+// ---------------------------------------------------------------------------
+
+export function addNote(subject: { type: "deal" | "company" | "person"; id: string }, body: string, noteType: Note["noteType"], mentions: Note["mentions"] = [], pinned = false): ActionResult {
+  return commit("add_note", (db, actor) => {
+    if (!body.trim()) return fail("The note is empty.");
+    const id = newId("note");
+    db.notes.push({ id, subject, body: body.trim(), noteType, authorId: actor.id, pinned, mentions, createdAt: nowIso() });
+    return [{ action: "note.add", entity: { type: "note", id }, dealId: subject.type === "deal" ? subject.id : undefined, summary: `Added a note (${NOTE_LABELS[noteType]})` }];
   });
 }

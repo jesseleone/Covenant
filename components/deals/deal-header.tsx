@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, Check, MoreHorizontal } from "lucide-react";
+import { ArrowRight, Check, MessageSquare, MoreHorizontal } from "lucide-react";
+import { useState } from "react";
+import { DealChatPanel } from "@/components/chat/deal-chat-panel";
 import { STAGES, STAGE_LABELS, PASS_REASON_LABELS, type Deal } from "@/lib/schema";
 import { nextStage } from "@/lib/gates";
 import { useCurrentUser, useDB } from "@/lib/store";
@@ -24,6 +26,7 @@ export function DealHeader({ deal }: { deal: Deal }) {
   const active = deal.status === "active";
   const out = deal.status === "passed" || deal.status === "lost" || deal.status === "on_hold";
   const next = nextStage(deal.stage);
+  const [chatOpen, setChatOpen] = useState(false);
 
   return (
     <header className="space-y-4">
@@ -43,6 +46,7 @@ export function DealHeader({ deal }: { deal: Deal }) {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => setChatOpen(true)}><MessageSquare size={15} />Ask about this deal</Button>
           {active && next && user && canMoveStage(user.role, next) && (
             <Button variant="primary" onClick={() => mover.request(deal, next)}>
               {next === "ic" ? "Submit to IC" : `Advance to ${STAGE_LABELS[next]}`}<ArrowRight size={15} />
@@ -107,6 +111,7 @@ export function DealHeader({ deal }: { deal: Deal }) {
         <Metric label="Next IC" value={m.nextIcDate ? fmtDate(m.nextIcDate) : "—"} />
       </div>
       {mover.ui}
+      <DealChatPanel deal={deal} open={chatOpen} onOpenChange={setChatOpen} />
     </header>
   );
 }

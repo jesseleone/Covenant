@@ -98,3 +98,13 @@ export function commit(
   useDBStore.setState({ db: draft });
   return { ok: true };
 }
+
+/**
+ * Personal, unaudited writes (chat threads and messages). Domain records go
+ * through `commit` instead.
+ */
+export function mutate(recipe: (draft: DB) => void) {
+  const draft = structuredClone(useDBStore.getState().db);
+  recipe(draft);
+  useDBStore.setState({ db: draft });
+}
