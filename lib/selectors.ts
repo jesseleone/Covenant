@@ -78,7 +78,7 @@ export function leadTranche(db: DB, termSetId?: string): Tranche | undefined {
 export function totalLeverage(db: DB, dealId: string, termSetId?: string): number | null {
   const ebitda = numField(db, dealId, "adj_ebitda_ltm");
   const tsId = resolveTermSetId(db, dealId, termSetId);
-  if (!ebitda || !tsId) return null;
+  if (!ebitda || !tsId || tranchesFor(db, tsId).length === 0) return null;
   return fundedDebt(db, tsId) / ebitda;
 }
 

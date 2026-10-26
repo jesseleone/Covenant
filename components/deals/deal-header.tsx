@@ -103,10 +103,10 @@ export function DealHeader({ deal }: { deal: Deal }) {
       </ol>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-        <Metric label="Facility" value={fmtUsdM(m.facilitySize)} note={`Fernhill hold ${fmtUsdM(m.fundHold)}`} />
-        <Metric label="Total leverage at close" value={fmtX(m.leverage)} warn={m.unconfirmed} note={m.unconfirmed ? "EBITDA not yet confirmed" : `Funded debt ${fmtUsdM(m.fundedDebt)}`} />
+        <Metric label="Facility" value={m.facilitySize ? fmtUsdM(m.facilitySize) : "—"} note={m.facilitySize ? `Fernhill hold ${fmtUsdM(m.fundHold)}` : "No terms drafted yet"} />
+        <Metric label="Total leverage at close" value={m.leverage === null ? "—" : fmtX(m.leverage)} warn={m.unconfirmed && m.leverage !== null} note={m.leverage === null ? "Needs terms and EBITDA" : m.unconfirmed ? "EBITDA not yet confirmed" : `Funded debt ${fmtUsdM(m.fundedDebt)}`} />
         <Metric label="Spread / floor" value={`${fmtSpread(m.spreadBps)} / ${fmtBps(m.floorBps)}`} />
-        <Metric label="Covenant cushion" value={fmtPct(m.cushion)} warn={m.cushionWarn || m.unconfirmed} note={m.cushionWarn ? `Below ${db.settings.coverageCushionGuidelinePct}% guideline` : m.unconfirmed ? "EBITDA not yet confirmed" : m.covenantLevel ? `vs ${fmtX(m.covenantLevel)} covenant` : undefined} />
+        <Metric label="Covenant cushion" value={m.cushion === null ? "—" : fmtPct(m.cushion)} warn={m.cushion !== null && (m.cushionWarn || m.unconfirmed)} note={m.cushionWarn ? `Below ${db.settings.coverageCushionGuidelinePct}% guideline` : m.unconfirmed ? "EBITDA not yet confirmed" : m.covenantLevel ? `vs ${fmtX(m.covenantLevel)} covenant` : undefined} />
         <Metric label="Risk rating" value={deal.riskRating ? `${deal.riskRating.value} of 5` : "—"} note={deal.riskRating ? "1 = best" : undefined} />
         <Metric label="Next IC" value={m.nextIcDate ? fmtDate(m.nextIcDate) : "—"} />
       </div>

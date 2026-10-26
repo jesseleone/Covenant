@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { List, Kanban, Plus } from "lucide-react";
-import { toast } from "sonner";
+import { openNew } from "@/lib/ui";
 import { useCurrentUser, useDB } from "@/lib/store";
 import { Button, PageHeader, cn } from "@/components/ui/primitives";
 import { DealsTable } from "@/components/deals/deals-table";
@@ -46,7 +46,7 @@ function Deals() {
                 </Link>
               ))}
             </div>
-            <Button variant="primary" onClick={() => toast("New deal", { description: "The create flow (with duplicate checks) arrives in a later build step." })}>
+            <Button variant="primary" onClick={() => openNew("deal")}>
               <Plus size={16} />New deal
             </Button>
           </>

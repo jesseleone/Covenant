@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Building2, ChevronDown, ClipboardCheck, Gavel, Inbox, Kanban, MessageSquare, PanelLeftClose, PanelLeftOpen, Plus, Users } from "lucide-react";
-import { toast } from "sonner";
+import { openNew } from "@/lib/ui";
 import { Monogram } from "@/components/providers";
 import { cn } from "@/components/ui/primitives";
 import { Menu, MenuContent, MenuItem, MenuTrigger, Tip } from "@/components/ui/menu";
@@ -23,7 +23,6 @@ const LATER = [
 
 export function LeftNav({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
   const pathname = usePathname();
-  const comingSoon = (what: string) => toast(`New ${what}`, { description: "The create flow (with duplicate checks) arrives in a later build step." });
 
   return (
     <aside className={cn("flex h-full shrink-0 flex-col border-r border-border bg-sidebar transition-[width] duration-150", collapsed ? "w-16" : "w-[260px]")}>
@@ -49,9 +48,9 @@ export function LeftNav({ collapsed, onToggle }: { collapsed: boolean; onToggle:
             </button>
           </MenuTrigger>
           <MenuContent align="start">
-            <MenuItem onSelect={() => comingSoon("deal")}>Deal</MenuItem>
-            <MenuItem onSelect={() => comingSoon("company")}>Company</MenuItem>
-            <MenuItem onSelect={() => comingSoon("person")}>Person</MenuItem>
+            <MenuItem onSelect={() => openNew("deal")}><Kanban size={15} />Deal</MenuItem>
+            <MenuItem onSelect={() => openNew("company")}><Building2 size={15} />Company</MenuItem>
+            <MenuItem onSelect={() => openNew("person")}><Users size={15} />Person</MenuItem>
           </MenuContent>
         </Menu>
       </div>

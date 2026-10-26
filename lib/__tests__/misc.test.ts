@@ -82,3 +82,16 @@ describe("memo figure guard", async () => {
     for (const s of db.memoSections) expect(typedFigures(s.content), s.id).toEqual([]);
   });
 });
+
+describe("name normalization", async () => {
+  const { normalizeName, findCompanyMatches: match } = await import("@/lib/dedupe");
+  it("treats abbreviations, punctuation and legal suffixes as equal", () => {
+    expect(normalizeName("Wren Industrial Svcs.")).toBe(normalizeName("Wren Industrial Services"));
+    expect(normalizeName("Halvorsen & Co.")).toBe("halvorsen and");
+    expect(match(db.companies, "Wren Industrial Services")[0]).toMatchObject({ score: 0 });
+    expect(match(db.companies, "Ashby Hill Partners LP")[0]?.item.id).toBe("co_ashby");
+  });
+  it("drops weak fuzzy hits", () => {
+    expect(match(db.companies, "Wren Services").map((m) => m.item.id)).toEqual(["co_wren"]);
+  });
+});

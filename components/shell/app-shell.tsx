@@ -5,6 +5,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCurrentUser } from "@/lib/store";
 import { LeftNav } from "./left-nav";
 import { TopBar } from "./top-bar";
+import { CommandPalette } from "./command-palette";
+import { GlobalModals } from "@/components/modals/new-modals";
 
 const COLLAPSE_KEY = "covenant-nav-collapsed";
 
@@ -37,6 +39,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <TopBar />
         <main className="min-h-0 flex-1 overflow-y-auto">{children}</main>
       </div>
+      <CommandPalette />
+      <GlobalModals />
     </div>
   );
 }

@@ -256,3 +256,44 @@ describe("IC decision", async () => {
     expect(deal("deal_larch")).toMatchObject({ status: "passed", passReason: "credit_quality" });
   });
 });
+
+describe("creating records", async () => {
+  const { createDeal, createCompany, createPerson, addStakeholder, confirmAllAbove } = await import("@/lib/actions");
+  const { findCompanyMatches } = await import("@/lib/dedupe");
+  const { SAMPLE_CIM } = await import("@/lib/seed/sample-cim");
+
+  it("the sample CIM's borrower name trips the duplicate check", () => {
+    expect(findCompanyMatches(db().companies, SAMPLE_CIM.borrowerName)[0]?.item.id).toBe("co_wren");
+  });
+
+  it("creates a deal from the sample CIM using the existing borrower, with 10 proposed values", () => {
+    const r = createDeal({ name: "Project Wren", borrowerCompanyId: "co_wren", strategy: "cash_flow", dealType: "recap", requestedSize: 55, sampleCim: true });
+    expect(r.ok).toBe(true);
+    const d = deal(r.id!);
+    expect(d).toMatchObject({ stage: "sourced", status: "active", borrowerCompanyId: "co_wren", codename: "Wren" });
+    expect(db().extractedFields.filter((f) => f.dealId === d.id && f.status === "proposed")).toHaveLength(10);
+    expect(db().termSets.find((t) => t.dealId === d.id)).toMatchObject({ version: 1, status: "draft", label: "proposal" });
+    expect(db().companies.filter((c) => c.name.startsWith("Wren"))).toHaveLength(1); // no duplicate created
+    expect(confirmAllAbove(d.id, 0.9).count).toBe(7);
+    // every quote is on its page
+    for (const f of db().extractedFields.filter((x) => x.dealId === d.id)) {
+      const doc = db().documents.find((x) => x.id === f.documentId)!;
+      expect(doc.pages.find((p) => p.n === f.page)!.markdown).toContain(f.quote);
+    }
+  });
+
+  it("creates a borrower inline, a company and a person with an affiliation", () => {
+    const r = createDeal({ name: "Project Kestrel", newBorrowerName: "Kestrel Labs", strategy: "cash_flow", dealType: "lbo" });
+    expect(db().companies.find((c) => c.id === deal(r.id!).borrowerCompanyId)!.name).toBe("Kestrel Labs");
+    const c = createCompany({ name: "Oriel Capital", types: ["sponsor"] });
+    const p = createPerson({ fullName: "Nina Park", companyId: c.id, title: "Partner", personType: "sponsor" });
+    expect(db().affiliations.find((a) => a.personId === p.id)).toMatchObject({ companyId: c.id, title: "Partner", isCurrent: true });
+    expect(addStakeholder(r.id!, { personId: p.id, role: "Sponsor deal lead", side: "sponsor" }).ok).toBe(true);
+    expect(addStakeholder(r.id!, { personId: p.id, role: "Sponsor deal lead", side: "sponsor" }).ok).toBe(false);
+  });
+
+  it("IC members can't create records", () => {
+    signIn("u_robert");
+    expect(createCompany({ name: "X Co", types: ["borrower"] }).ok).toBe(false);
+  });
+});

@@ -54,3 +54,28 @@ export function NoteList({ db, notes, empty = "No notes yet." }: { db: DB; notes
     </div>
   );
 }
+
+export type FeedItem = { at: string; actorId: string; title: React.ReactNode; body?: string; href?: string; tag: string };
+
+/** A mixed activity feed (notes, deal events, roles), newest first. */
+export function ActivityFeed({ db, items, empty = "No activity yet." }: { db: DB; items: FeedItem[]; empty?: string }) {
+  if (items.length === 0) return <p className="text-text-3">{empty}</p>;
+  const sorted = [...items].sort((a, b) => b.at.localeCompare(a.at));
+  return (
+    <ol className="relative space-y-4 border-l border-border pl-5">
+      {sorted.map((it, i) => {
+        const actor = userById(db, it.actorId);
+        return (
+          <li key={i} className="relative">
+            <span className="absolute top-1.5 -left-[25px] size-2 rounded-full bg-border-strong" />
+            <div className="flex flex-wrap items-center gap-2 text-[12px] text-text-3">
+              <Chip tone="outline">{it.tag}</Chip>{fmtDateTime(it.at)}{actor && <> · {actor.name}</>}
+            </div>
+            <div className="mt-0.5">{it.href ? <a href={it.href} className="hover:text-accent">{it.title}</a> : it.title}</div>
+            {it.body && <Markdown className="mt-1 text-[14px] text-text-2">{it.body}</Markdown>}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}

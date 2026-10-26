@@ -3,9 +3,10 @@
 import { Bell, Search } from "lucide-react";
 import { toast } from "sonner";
 import { UserMenu } from "./user-menu";
+import { setPalette } from "@/lib/ui";
 
 export function TopBar() {
-  const openSearch = () => toast("Search", { description: "The ⌘K command palette arrives in a later build step." });
+  const openSearch = () => setPalette(true);
 
   return (
     <header className="flex h-14 shrink-0 items-center gap-4 border-b border-border bg-bg px-5">

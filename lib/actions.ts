@@ -5,12 +5,13 @@
 // of the DB and appends AuditEvents.
 
 import { nextThursday, parseISO, format } from "date-fns";
-import { NOTE_LABELS, PASS_REASON_LABELS, STAGE_LABELS, type AuditEvent, type Covenant, type DB, type DDItem, type ICCondition, type ICEvent, type MemoSection, type Note, type PassReason, type Stage, type Tranche } from "@/lib/schema";
+import { NOTE_LABELS, PASS_REASON_LABELS, STAGE_LABELS, type AuditEvent, type Company, type Covenant, type DB, type Deal, type Person, type Stakeholder, type DDItem, type ICCondition, type ICEvent, type MemoSection, type Note, type PassReason, type Stage, type Tranche } from "@/lib/schema";
 import { diffTerms, summarizeChanges } from "@/lib/terms";
 import { evaluateGate } from "@/lib/gates";
 import { canMoveStage } from "@/lib/permissions";
 import { activeTermSet, computeSnapshot, sectionIsStale } from "@/lib/selectors";
 import { offlineSection } from "@/lib/memo";
+import { SAMPLE_CIM, SAMPLE_CIM_FIELDS } from "@/lib/seed/sample-cim";
 import { commit, newId, nowIso, type ActionResult } from "@/lib/store";
 
 const fail = (error: string): ActionResult => ({ ok: false, error });
@@ -557,5 +558,146 @@ export function addNote(subject: { type: "deal" | "company" | "person"; id: stri
     const id = newId("note");
     db.notes.push({ id, subject, body: body.trim(), noteType, authorId: actor.id, pinned, mentions, createdAt: nowIso() });
     return [{ action: "note.add", entity: { type: "note", id }, dealId: subject.type === "deal" ? subject.id : undefined, summary: `Added a note (${NOTE_LABELS[noteType]})` }];
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Creating records (duplicate checks run in the UI before these are called)
+// ---------------------------------------------------------------------------
+
+export type NewCompany = { name: string; types: Company["types"]; domain?: string; sector?: string; hqCity?: string; hqCountry?: string };
+
+function insertCompany(db: DB, actorId: string, c: NewCompany): { id: string; audit: AuditDraft } {
+  const id = newId("co");
+  db.companies.push({
+    id, name: c.name.trim(), aliases: [], types: c.types.length ? c.types : ["borrower"], domain: c.domain?.trim() || undefined,
+    sector: c.sector?.trim() || undefined, hqCity: c.hqCity?.trim() || undefined, hqCountry: c.hqCountry?.trim() || "US", ownerUserId: actorId, createdAt: nowIso(),
+  });
+  return { id, audit: { action: "company.create", entity: { type: "company", id }, summary: `Created company ${c.name.trim()}` } };
+}
+
+export function createCompany(c: NewCompany): ActionResult & { id?: string } {
+  let id: string | undefined;
+  const r = commit("create_record", (db, actor) => {
+    if (!c.name.trim()) return fail("Enter a name.");
+    if (!c.types.length) return fail("Choose at least one type.");
+    const made = insertCompany(db, actor.id, c);
+    id = made.id;
+    return [made.audit];
+  });
+  return { ...r, id };
+}
+
+export type NewPerson = {
+  fullName: string; companyId?: string; newCompanyName?: string; title?: string; email?: string;
+  personType: Person["personType"]; relationshipOwnerId?: string;
+};
+
+export function createPerson(p: NewPerson): ActionResult & { id?: string } {
+  let id: string | undefined;
+  const r = commit("create_record", (db, actor) => {
+    if (!p.fullName.trim()) return fail("Enter a name.");
+    if (!p.companyId && !p.newCompanyName?.trim()) return fail("Choose or create a company.");
+    const audit: AuditDraft[] = [];
+    let companyId = p.companyId;
+    if (!companyId) {
+      const made = insertCompany(db, actor.id, { name: p.newCompanyName!, types: [p.personType === "sponsor" ? "sponsor" : p.personType === "banker" ? "advisor" : "borrower"] });
+      companyId = made.id;
+      audit.push(made.audit);
+    }
+    id = newId("per");
+    db.people.push({ id, fullName: p.fullName.trim(), email: p.email?.trim() || undefined, personType: p.personType, relationshipOwnerId: p.relationshipOwnerId ?? actor.id, createdAt: nowIso() });
+    db.affiliations.push({ id: newId("aff"), personId: id, companyId, title: p.title?.trim() || "—", startDate: db.settings.today, isCurrent: true });
+    const company = db.companies.find((c) => c.id === companyId)!;
+    audit.push({ action: "person.create", entity: { type: "person", id }, summary: `Created ${p.fullName.trim()} (${p.title?.trim() || "contact"} at ${company.name})` });
+    return audit;
+  });
+  return { ...r, id };
+}
+
+export type NewDeal = {
+  name: string; borrowerCompanyId?: string; newBorrowerName?: string; strategy: Deal["strategy"]; sponsorCompanyId?: string;
+  dealType: Deal["dealType"]; requestedSize?: number; expectedClose?: string; leadUserId?: string; sampleCim?: boolean;
+};
+
+/** Create a deal at Sourced with an empty proposal term set; optionally attach the sample CIM and its proposed values. */
+export function createDeal(n: NewDeal): ActionResult & { id?: string } {
+  let id: string | undefined;
+  const r = commit("create_record", (db, actor) => {
+    if (!n.name.trim()) return fail("Enter a deal name.");
+    if (!n.borrowerCompanyId && !n.newBorrowerName?.trim()) return fail("Choose or create the borrower.");
+    const audit: AuditDraft[] = [];
+    let borrowerId = n.borrowerCompanyId;
+    if (!borrowerId) {
+      const made = insertCompany(db, actor.id, { name: n.newBorrowerName!, types: ["borrower"], sector: n.sampleCim ? SAMPLE_CIM.sector : undefined });
+      borrowerId = made.id;
+      audit.push(made.audit);
+    }
+    const at = nowIso();
+    id = newId("deal");
+    const name = n.name.trim();
+    const codename = name.replace(/^project\s+/i, "");
+    const lead = n.leadUserId ?? actor.id;
+    const borrower = db.companies.find((c) => c.id === borrowerId)!;
+    db.deals.push({
+      id, name, codename, borrowerCompanyId: borrowerId, sponsorCompanyId: n.sponsorCompanyId, strategy: n.strategy, dealType: n.dealType,
+      stage: "sourced", status: "active", requestedSize: n.requestedSize ?? 0, fundHoldTarget: n.requestedSize ?? 0, expectedClose: n.expectedClose,
+      leadUserId: lead, teamUserIds: [...new Set([actor.id, lead])], tags: [], sector: n.sampleCim ? SAMPLE_CIM.sector : borrower.sector ?? "",
+      sectorTags: n.sampleCim ? SAMPLE_CIM.sectorTags : [], createdAt: at, stageEnteredAt: at,
+    });
+    db.stageEvents.push({ id: newId("se"), dealId: id, from: null, to: "sourced", userId: actor.id, at });
+    db.termSets.push({ id: newId("ts"), dealId: id, version: 1, label: "proposal", status: "draft", createdBy: actor.id, createdAt: at });
+    db.stakeholders.push({ id: newId("sh"), dealId: id, companyId: borrowerId, role: "Borrower", side: "borrower" });
+    if (n.sponsorCompanyId) db.stakeholders.push({ id: newId("sh"), dealId: id, companyId: n.sponsorCompanyId, role: "Sponsor", side: "sponsor" });
+    audit.push({ action: "deal.create", entity: { type: "deal", id }, dealId: id, summary: `Created the deal at Sourced (borrower ${borrower.name})` });
+
+    if (n.sampleCim) {
+      const docId = newId("doc");
+      db.documents.push({ id: docId, dealId: id, docType: "cim", title: SAMPLE_CIM.title, version: 1, source: "upload", extractionStatus: "done", uploadedAt: at,
+        pages: SAMPLE_CIM.pages.map((markdown, i) => ({ n: i + 1, markdown })) });
+      for (const [key, label, value, unit, page, quote, confidence, period] of SAMPLE_CIM_FIELDS) {
+        db.extractedFields.push({ id: newId("ef"), dealId: id, documentId: docId, page, quote, fieldKey: key, label, value, unit, period, confidence, status: "proposed" });
+      }
+      db.financialPeriods.push({ id: newId("fp"), dealId: id, companyId: borrowerId, label: "LTM Sep-26", periodEnd: "2026-09-30", periodType: "LTM", case: "actual", revenue: 64.0, adjEbitdaFieldKey: "adj_ebitda_ltm", adjEbitda: 9.8, capex: 1.1 });
+      audit.push({ action: "document.upload", entity: { type: "document", id: docId }, dealId: id, summary: `Added document: ${SAMPLE_CIM.title}` });
+      audit.push({ action: "field.extract", entity: { type: "document", id: docId }, dealId: id, summary: `Extracted ${SAMPLE_CIM_FIELDS.length} values from the CIM for review` });
+    }
+    return audit;
+  });
+  return { ...r, id };
+}
+
+// ---------------------------------------------------------------------------
+// Stakeholders and notes
+// ---------------------------------------------------------------------------
+
+export function addStakeholder(dealId: string, s: { personId?: string; companyId?: string; role: string; side: Stakeholder["side"] }): ActionResult {
+  return commit("edit_deal", (db) => {
+    if (!s.personId && !s.companyId) return fail("Choose a person or company.");
+    if (!s.role.trim()) return fail("Give the role.");
+    if (db.stakeholders.some((x) => x.dealId === dealId && (s.personId ? x.personId === s.personId : x.companyId === s.companyId) && x.role === s.role.trim())) return fail("Already on this deal in that role.");
+    const id = newId("sh");
+    db.stakeholders.push({ id, dealId, personId: s.personId, companyId: s.personId ? undefined : s.companyId, role: s.role.trim(), side: s.side });
+    const name = s.personId ? db.people.find((p) => p.id === s.personId)?.fullName : db.companies.find((c) => c.id === s.companyId)?.name;
+    return [{ action: "stakeholder.add", entity: { type: "stakeholder", id }, dealId, summary: `Added ${name} as ${s.role.trim()}` }];
+  });
+}
+
+export function removeStakeholder(stakeholderId: string): ActionResult {
+  return commit("edit_deal", (db) => {
+    const s = db.stakeholders.find((x) => x.id === stakeholderId);
+    if (!s) return fail("Not found.");
+    db.stakeholders = db.stakeholders.filter((x) => x.id !== stakeholderId);
+    const name = s.personId ? db.people.find((p) => p.id === s.personId)?.fullName : db.companies.find((c) => c.id === s.companyId)?.name;
+    return [{ action: "stakeholder.remove", entity: { type: "stakeholder", id: s.id }, dealId: s.dealId, summary: `Removed ${name} (${s.role})` }];
+  });
+}
+
+export function toggleNotePin(noteId: string): ActionResult {
+  return commit("add_note", (db) => {
+    const n = db.notes.find((x) => x.id === noteId);
+    if (!n) return fail("Note not found.");
+    n.pinned = !n.pinned;
+    return [{ action: "note.pin", entity: { type: "note", id: n.id }, dealId: n.subject.type === "deal" ? n.subject.id : undefined, summary: `${n.pinned ? "Pinned" : "Unpinned"} a note` }];
   });
 }

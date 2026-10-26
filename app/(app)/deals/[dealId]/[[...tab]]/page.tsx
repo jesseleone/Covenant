@@ -1,6 +1,7 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useEffect } from "react";
+import { pushRecent } from "@/lib/recent";
 import { useParams } from "next/navigation";
 import { useDB } from "@/lib/store";
 import { dealById } from "@/lib/selectors";
@@ -13,6 +14,7 @@ export default function DealPage() {
   const db = useDB();
   const deal = dealById(db, params.dealId);
   const tab = params.tab?.[0] ?? "overview";
+  useEffect(() => { if (params.dealId) pushRecent({ type: "deal", id: params.dealId }); }, [params.dealId]);
 
   if (!deal) return <div className="p-6"><EmptyState title="Deal not found">It may have been removed, or the link is wrong.</EmptyState></div>;
 

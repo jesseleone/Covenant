@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowUp, AtSign, Building2, Check, ChevronDown, Copy, Kanban, Loader2, NotebookPen, User, X, Zap } from "lucide-react";
 import { toast } from "sonner";
-import Fuse from "fuse.js";
 import { create } from "zustand";
 import type { ChatMessage, DB } from "@/lib/schema";
 import { addChatMessage, createThread, type Scope } from "@/lib/chat";
@@ -15,6 +14,7 @@ import { chatSystemPrompt } from "@/lib/llm/prompts";
 import { renderMarkdown } from "@/lib/render/tokens";
 import { Chip, cn } from "@/components/ui/primitives";
 import { RichText } from "@/components/common/rich-text";
+import { MentionPicker } from "@/components/common/mention-picker";
 
 export const SUGGESTED = [
   "What leverage and spreads did we approve on services deals over $75M, and why did we pass on similar ones?",
@@ -51,9 +51,10 @@ function scopeName(db: DB, s: Scope) {
  * answering loop. Used by the Chat page and the deal-page panel.
  */
 export function ChatConversation({
-  threadId, defaultScope = [], onThreadCreated, compact, suggestions = SUGGESTED, greeting,
+  threadId, defaultScope = [], onThreadCreated, compact, suggestions = SUGGESTED, greeting, initialPrompt,
 }: {
   threadId?: string;
+  initialPrompt?: string;
   defaultScope?: Scope[];
   onThreadCreated?: (id: string) => void;
   compact?: boolean;
@@ -75,10 +76,10 @@ export function ChatConversation({
   const bottom = useRef<HTMLDivElement>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
 
-  useEffect(() => { getLiveStatus().then((s) => setLive(s.configured)); }, []);
   useEffect(() => { bottom.current?.scrollIntoView({ block: "end" }); }, [messages.length, steps.length, busy]);
 
-  async function send(text: string) {
+  async function send(text: string, liveOverride?: boolean) {
+    const isLive = liveOverride ?? live;
     const prompt = text.trim();
     if (!prompt || busy || !user) return;
     let id = threadId;
@@ -90,7 +91,7 @@ export function ChatConversation({
     const scopeNote = scope.length ? `\n\n(Scope: ${scope.map((s) => scopeName(db, s)).join(", ")})` : "";
     addChatMessage(id, { role: "user", content: prompt });
     setInput("");
-    setPending(id, { steps: [], live: !!live });
+    setPending(id, { steps: [], live: !!isLive });
     if (!threadId) onThreadCreated?.(id);
 
     const offline = async (reason?: string) => {
@@ -101,7 +102,7 @@ export function ChatConversation({
     };
 
     try {
-      if (live) {
+      if (isLive) {
         try {
           const r = await runAgent({
             db: () => useDBStore.getState().db,
@@ -124,7 +125,18 @@ export function ChatConversation({
     }
   }
 
-  const addScope = (s: Scope) => { setScope((x) => (x.some((y) => y.id === s.id) ? x : [...x, s])); setMentioning(false); textarea.current?.focus(); };
+  const started = useRef(false);
+  useEffect(() => {
+    getLiveStatus().then((s) => {
+      setLive(s.configured);
+      // A question handed over from the command palette is asked once, as soon as the mode is known.
+      if (initialPrompt && !threadId && !started.current) { started.current = true; void send(initialPrompt, s.configured); }
+    });
+    // Runs once on mount; `send` reads the latest state when it's called.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const addScope = (p: Scope) => { const s = { type: p.type, id: p.id }; setScope((x) => (x.some((y) => y.id === s.id) ? x : [...x, s])); setMentioning(false); textarea.current?.focus(); };
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -244,39 +256,6 @@ function MessageView({ db, m, scope }: { db: DB; m: ChatMessage; scope: Scope[] 
           <li className="pt-1 font-sans text-[11px] text-text-3">Each call is a typed query over the database; in production the same tools are served over MCP from Postgres.</li>
         </ol>
       )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-
-function MentionPicker({ db, onPick, onClose }: { db: DB; onPick: (s: Scope) => void; onClose: () => void }) {
-  const [q, setQ] = useState("");
-  const [active, setActive] = useState(0);
-  const all = useMemo(() => [
-    ...db.deals.map((d) => ({ type: "deal" as const, id: d.id, name: d.name, keys: [d.name, d.codename], hint: d.status === "active" ? "Deal" : `Deal · ${d.status}` })),
-    ...db.companies.map((c) => ({ type: "company" as const, id: c.id, name: c.name, keys: [c.name, ...c.aliases], hint: "Company" })),
-    ...db.people.map((p) => ({ type: "person" as const, id: p.id, name: p.fullName, keys: [p.fullName], hint: "Person" })),
-  ], [db]);
-  const fuse = useMemo(() => new Fuse(all, { keys: ["keys"], threshold: 0.4, ignoreLocation: true }), [all]);
-  const results = (q ? fuse.search(q).map((r) => r.item) : all.filter((x) => x.type === "deal")).slice(0, 8);
-  return (
-    <div className="absolute right-3 bottom-full left-3 z-20 mb-2 rounded-[12px] border border-border bg-surface p-1.5 shadow-pop">
-      <input autoFocus value={q} onChange={(e) => { setQ(e.target.value); setActive(0); }} placeholder="Mention a deal, company or person…"
-        onKeyDown={(e) => {
-          if (e.key === "Escape") onClose();
-          if (e.key === "ArrowDown") { e.preventDefault(); setActive((a) => Math.min(a + 1, results.length - 1)); }
-          if (e.key === "ArrowUp") { e.preventDefault(); setActive((a) => Math.max(a - 1, 0)); }
-          if (e.key === "Enter" && results[active]) { e.preventDefault(); onPick(results[active]); }
-        }}
-        className="mb-1 h-8 w-full rounded-[8px] bg-surface-2/60 px-2.5 text-[13px] outline-none" />
-      {results.map((r, i) => (
-        <button key={r.id} onMouseEnter={() => setActive(i)} onClick={() => onPick(r)}
-          className={cn("flex w-full items-center justify-between rounded-[8px] px-2.5 py-1.5 text-left text-[13px]", i === active && "bg-surface-2")}>
-          <span>{r.name}</span><span className="text-[11px] text-text-3">{r.hint}</span>
-        </button>
-      ))}
-      {results.length === 0 && <div className="px-2.5 py-2 text-[13px] text-text-3">No matches</div>}
     </div>
   );
 }

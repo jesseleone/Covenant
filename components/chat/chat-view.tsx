@@ -16,7 +16,7 @@ function greeting(name: string) {
   return `${h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening"}, ${name.split(" ")[0]}`;
 }
 
-export function ChatView({ threadId }: { threadId?: string }) {
+export function ChatView({ threadId, initialPrompt }: { threadId?: string; initialPrompt?: string }) {
   const db = useDB();
   const user = useCurrentUser();
   const router = useRouter();
@@ -65,6 +65,7 @@ export function ChatView({ threadId }: { threadId?: string }) {
         <ChatConversation
           key={threadId ?? "new"}
           threadId={threadId}
+          initialPrompt={initialPrompt}
           onThreadCreated={(id) => router.replace(`/chat/${id}`)}
           greeting={
             <>
