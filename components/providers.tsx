@@ -22,6 +22,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
           position="bottom-right"
           toastOptions={{
             className: "!bg-surface !text-text !border-border !shadow-pop !rounded-xl !font-sans",
+            descriptionClassName: "!text-text-2",
           }}
         />
       </Tooltip.Provider>

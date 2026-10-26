@@ -24,7 +24,7 @@ export function UserMenu() {
       <Menu>
         <MenuTrigger asChild>
           <button className="flex items-center gap-2 rounded-full py-1 pr-1 pl-2.5 hover:bg-surface-2" aria-label="User menu">
-            <span className="hidden text-right leading-tight sm:block">
+            <span className="hidden text-right leading-tight whitespace-nowrap xl:block">
               <span className="block text-[13px] font-medium">{user.name}</span>
               <span className="block text-[11px] text-text-3">{ROLE_LABELS[user.role]}</span>
             </span>
