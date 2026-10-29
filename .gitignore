@@ -44,3 +44,6 @@ next-env.d.ts
 # context material (large binaries); keep the scope docs
 /Background Info/*
 !/Background Info/*.md
+
+# local Claude Code settings
+/.claude/
