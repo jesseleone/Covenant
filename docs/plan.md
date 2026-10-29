@@ -48,7 +48,7 @@ Branch `citizen-sdlc`, from tag `task1-v1` (the Task 1 prototype). Each phase en
 | Lane classifier | `scripts/ci/classify-lane.ts` (pure, unit-tested) + the `lane` job: sets the label, updates one comment (hidden marker), enables auto-merge on green and disables it on review. No verdict or a failed review means the review lane. |
 | Engineer approval check | `engineer-approval` job in the same workflow, also run on `pull_request_review`: passes for green-lane PRs; for review-lane PRs it passes only once an engineer listed in `.github/approvers.json` has approved the latest commit. It is a required check. |
 | Previews | `.github/workflows/preview.yml`: one updated comment with the "Open live preview" Codespaces link for the PR branch, and a screenshots job (Postgres service, migrate, seed, build, start, Playwright screenshots of changed extension views, uploaded as an artifact and linked) |
-| CODEOWNERS | `.github/CODEOWNERS`: `* @jesseleone`, `/extensions/ <business approver>`; usernames also in `.github/approvers.json` |
+| CODEOWNERS | `.github/CODEOWNERS`: `* @jesseleone`, `/extensions/ @jesse-leone`; usernames also in `.github/approvers.json` |
 | PR template | `.github/pull_request_template.md` |
 | Metrics | `.github/workflows/metrics.yml` (weekly), `scripts/ci/metrics.ts` |
 
@@ -77,6 +77,6 @@ Branch `citizen-sdlc`, from tag `task1-v1` (the Task 1 prototype). Each phase en
 
 ## Open questions
 
-1. **Business approver username.** You're creating the second account. Until you send the name, CODEOWNERS and `approvers.json` use the placeholder `BUSINESS_APPROVER_USERNAME`, and the runbook says where to change it.
+1. ~~Business approver username~~ — resolved: `@jesse-leone` is the business approver, `@jesseleone` the engineer.
 2. **Exact Codespaces link format and `claude-code-action` inputs and outputs** (model setting, cost output). I'll check these against GitHub's and the action's docs in Phases 3 and 5 rather than relying on memory.
 3. **Pushing the tag.** `task1-v1` exists locally. I'll push it with the branch in Phase 5, as you allowed.

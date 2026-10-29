@@ -9,5 +9,6 @@ Implementation choices not fixed by the brief. One line each: choice — reason.
 - **Addition to decision 3:** a required `engineer-approval` check (lane classifier) passes for review-lane PRs only after an engineer listed in `.github/approvers.json` approves — CODEOWNERS alone would let an extension-only PR with a "serious" AI verdict merge with just a business approval.
 - If the AI review doesn't run or gives no verdict, the PR goes to the review lane — fail safe.
 - Checks, AI review and lane classification are jobs in one workflow, in that order — the classifier needs both results.
+- Roles: `@jesseleone` is the engineer (owns `*`), `@jesse-leone` the business approver (owns `extensions/`) — two accounts so the approver is never the PR author.
 - Admin override is allowed only as a documented fallback for dry runs — the second account is the intended approver.
 - Codespaces opened from a PR's preview link are billed to whoever opens them, from their own free allowance — no cost to the repo owner; noted in the runbook and cheat sheet.
