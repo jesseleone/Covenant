@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "tsx scripts/gen-extensions.ts && vitest run",
-    "typecheck": "tsx scripts/gen-extensions.ts && tsc --noEmit",
+    "typecheck": "tsx scripts/gen-extensions.ts && next typegen && tsc --noEmit",
     "db:migrate": "tsx scripts/db.ts migrate",
     "db:seed": "tsx scripts/db.ts seed",
     "db:reset": "tsx scripts/db.ts reset",
