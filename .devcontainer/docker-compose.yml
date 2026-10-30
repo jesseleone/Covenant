@@ -5,6 +5,10 @@ services:
   app:
     image: mcr.microsoft.com/devcontainers/typescript-node:1-22-bookworm
     command: sleep infinity
+    # Share the database container's network, so the app and Postgres are both
+    # on "localhost" and Codespaces' port forwarding can reach the app (port
+    # 3000). This is the standard setup for Codespaces with a database.
+    network_mode: service:db
     volumes:
       - ..:/workspaces/Covenant:cached
       # Linux packages and build output stay inside the container, so a
@@ -12,8 +16,8 @@ services:
       - node-modules:/workspaces/Covenant/node_modules
       - next-build:/workspaces/Covenant/.next
     environment:
-      DATABASE_URL: postgres://postgres:postgres@db:5432/covenant
-      TEST_DATABASE_URL: postgres://postgres:postgres@db:5432/covenant_test
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/covenant
+      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/covenant_test
     depends_on:
       db:
         condition: service_healthy
