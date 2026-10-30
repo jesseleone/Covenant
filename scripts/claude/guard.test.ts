@@ -38,6 +38,7 @@ describe("guard: edits stay inside extensions/", () => {
 
   it("lets Claude keep its own notes and scratch files", () => {
     expect(run("Write", { file_path: "/tmp/covenant-approval.md" }).code).toBe(0);
+    expect(run("Write", { file_path: "/private/tmp/claude-501/session/scratchpad/commit-msg.txt" }).code).toBe(0);
   });
 
   it("steps aside in engineer mode", () => {

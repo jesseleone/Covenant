@@ -36,7 +36,8 @@ const inside = (dir) => file === dir || file.startsWith(dir + path.sep);
 
 // Claude Code's own notes and plans, and scratch files, are not part of the app.
 const claudeHome = path.resolve(process.env.CLAUDE_CONFIG_DIR || path.join(homedir(), ".claude"));
-if (inside(claudeHome) || inside(path.resolve(tmpdir())) || inside("/tmp")) process.exit(0);
+// (On macOS /tmp is really /private/tmp, where Claude Code keeps its scratch files.)
+if ([claudeHome, path.resolve(tmpdir()), "/tmp", "/private/tmp"].some(inside)) process.exit(0);
 
 const extensions = path.join(project, "extensions");
 if (inside(extensions) && file !== extensions) {
