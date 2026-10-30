@@ -23,11 +23,17 @@ export function changedFiles(pr: number): string[] {
   return pages.flat().map((f) => f.filename);
 }
 
-/** Create or update the single comment that starts with `marker`. */
+/** The account GitHub Actions comments as (GITHUB_TOKEN). */
+export const ACTIONS_BOT = "github-actions[bot]";
+
+/**
+ * Create or update the single comment that starts with `marker`. Only comments
+ * written by GitHub Actions count, so a look-alike comment can't be taken over.
+ */
 export function upsertComment(pr: number, marker: string, body: string) {
   const text = `${marker}\n${body}`;
-  const pages = ghJSON<{ id: number; body: string }[][]>(["api", "--paginate", "--slurp", `repos/${repo()}/issues/${pr}/comments`]);
-  const existing = pages.flat().find((c) => c.body.startsWith(marker));
+  const pages = ghJSON<{ id: number; body: string; user: { login: string } | null }[][]>(["api", "--paginate", "--slurp", `repos/${repo()}/issues/${pr}/comments`]);
+  const existing = pages.flat().find((c) => c.user?.login === ACTIONS_BOT && c.body.startsWith(marker));
   const file = path.join(tmpdir(), `comment-${Date.now()}.json`);
   writeFileSync(file, JSON.stringify({ body: text }));
   if (existing) gh(["api", "-X", "PATCH", `repos/${repo()}/issues/comments/${existing.id}`, "--input", file]);

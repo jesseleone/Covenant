@@ -2,6 +2,8 @@
 
 > The original Task 1 prototype (all data in the browser) is preserved at tag [`task1-v1`](https://github.com/jesseleone/Covenant/tree/task1-v1).
 
+> **Demo only.** Sign-in is a persona picker with no passwords, so anyone who can reach the app can act as any user. Never load real fund data into it. Real use needs single sign-on first (see [`docs/brief.md`](docs/brief.md), "What production would add").
+
 An underwriting workspace for a private credit deal team: deals, companies and people, with the underwriting work (financials, securities, due diligence, IC memo and IC approval) on each deal page, and a chat that answers questions from the fund's own records. It's a demo for the fictional Fernhill Credit Partners; data lives in Postgres, behind a small server API.
 
 The system explanation is in [`docs/SYSTEM.md`](docs/SYSTEM.md); the Postgres version of the data model is [`docs/schema.sql`](docs/schema.sql).
@@ -51,7 +53,7 @@ npm run db:reset             # create the tables and load the demo data
 npm run dev                  # http://localhost:3000
 ```
 
-`npm run db:migrate` applies new migrations, `npm run db:seed` reloads the demo data, and **Reset demo data** in the app does the same as `db:seed`.
+`npm run db:migrate` applies new migrations, `npm run db:seed` reloads the demo data, and **Reset demo data** in the app does the same as `db:seed` (the audit trail goes back to the demo's, plus a record of who reset it). Reset is on in development and Codespaces and off in the production image unless `COVENANT_ALLOW_RESET=1`.
 
 To run the production image: `docker build -t covenant .` then `docker run -p 3000:3000 -e DATABASE_URL=… covenant` (it migrates, and seeds an empty database, on start).
 

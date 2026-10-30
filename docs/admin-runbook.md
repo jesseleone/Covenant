@@ -1,5 +1,7 @@
 # Admin runbook
 
+> **Demo only.** Covenant's sign-in is a persona picker without passwords: anyone who can reach a running copy can act as any user, so permissions and the audit trail can't be trusted against a determined person. Never load real fund data. Before real use, replace sign-in with the firm's single sign-on and a signed session.
+
 Everything an administrator sets up and looks after, outside the code. Steps marked **(one-time)** are done once. GitHub menu names are as of October 2026; the Claude admin console changes more often, so where a menu path isn't certain this runbook says what to look for.
 
 ## 1. GitHub: make the process binding (one-time)
@@ -16,9 +18,11 @@ The workflows only *report*; branch protection makes them *required*.
    - **Require status checks to pass**, adding: `typecheck`, `lint`, `test`, `build`, `ai-review`, `lane`, `engineer-approval` (they appear in the list after they've run once)
    - **Block force pushes** and **Restrict deletions**
    - Leave **Do not allow bypassing the above settings** unticked only if you want the admin override for dry runs (section 6). Tick it once you have a second engineer.
-4. **The AI review's API key.** *Settings → Secrets and variables → Actions → New repository secret*: name `ANTHROPIC_API_KEY`. Use a key dedicated to CI from an Anthropic API (Console) workspace with its own monthly spend limit; one review costs cents. Without it, every change goes to the review lane.
-5. **People.** *Settings → Collaborators → Add people*, role **Write**, for every citizen developer (they need it to send changes for approval) and every approver. Code owners must have write access or GitHub ignores them.
-6. **Codespaces.** On a personal account, anyone who opens the repository's Codespace pays from their *own* free monthly allowance (GitHub Free includes a monthly quota of core-hours and storage; check GitHub's billing page for current amounts). Nothing is billed to the repository owner. Each person can add `ANTHROPIC_API_KEY` as their own Codespaces secret (*github.com → Settings → Codespaces → Secrets*) to get live AI in the app's chat; without it the app's chat runs offline. Claude Code itself signs in with their company Claude account.
+   - Using **rulesets** instead (*Settings → Rules → Rulesets*)? The same rules apply; the admin override is the ruleset's **Bypass list** (add *Repository admin*, "For pull requests only").
+4. **Actions permissions.** *Settings → Actions → General → Workflow permissions*: keep **Allow GitHub Actions to create and approve pull requests** switched off, so no workflow can approve a change.
+5. **The AI review's API key.** *Settings → Secrets and variables → Actions → New repository secret*: name `ANTHROPIC_API_KEY`. Use a key dedicated to CI from an Anthropic API (Console) workspace with its own monthly spend limit; one review costs cents. Without it, every change goes to the review lane.
+6. **People.** *Settings → Collaborators → Add people*, role **Write**, for every citizen developer (they need it to send changes for approval) and every approver. Code owners must have write access or GitHub ignores them.
+7. **Codespaces.** On a personal account, anyone who opens the repository's Codespace pays from their *own* free monthly allowance (GitHub Free includes a monthly quota of core-hours and storage; check GitHub's billing page for current amounts). Nothing is billed to the repository owner. Each person can add `ANTHROPIC_API_KEY` as their own Codespaces secret (*github.com → Settings → Codespaces → Secrets*) to get live AI in the app's chat; without it the app's chat runs offline. Claude Code itself signs in with their company Claude account.
 
 ## 2. Approvers
 
@@ -54,6 +58,7 @@ In the Claude admin console (claude.ai, admin settings):
 - **Weekly metrics.** The *Weekly metrics* issue updates every Monday; run it any time from *Actions → Weekly metrics → Run workflow*.
 - **Retiring extensions.** The *Extensions* page flags any extension unchanged for 90 days. To retire one, delete its folder in a pull request; that's a change to one extension folder, so it takes the green lane.
 - **Rotating the API key.** Create a new key, replace the repository secret, then revoke the old key.
+- **Reset demo data.** Wipes every table, including the audit trail, and reloads the demo data, then records who reset it. It's allowed in development and Codespaces, and refused in the production image unless the server is started with `COVENANT_ALLOW_RESET=1` (set `COVENANT_ALLOW_RESET=0` to refuse it anywhere).
 
 ## 5. Engineer mode
 
@@ -69,16 +74,16 @@ Engineer mode only changes the guard. The automatic checks and approvals still a
 
 ## 6. Admin override (dry runs only)
 
-While there is only one engineer, review-lane changes the engineer authored can't get an engineer approval (nobody approves their own work). For dry runs and the initial merge, a repository admin can tick **Merge without waiting for requirements to be met (bypass rules)** on the pull request. GitHub records who did it. Don't use it for citizens' changes; add a second engineer and tick **Do not allow bypassing** before real use.
+While there is only one engineer, review-lane changes the engineer authored can't get an engineer approval (nobody approves their own work). For dry runs and the initial merge, a repository admin can tick **Merge without waiting for requirements to be met (bypass rules)** on the pull request. With a ruleset, that option only appears if *Repository admin* is on the ruleset's bypass list. GitHub records who did it. Don't use it for citizens' changes; add a second engineer and tick **Do not allow bypassing** before real use.
 
 ## 7. Troubleshooting
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Every change is in the review lane with "The AI review didn't finish" | No `ANTHROPIC_API_KEY` secret, or the key was rejected | Add or rotate the secret (section 1.4) |
+| Every change is in the review lane with "The AI review didn't finish" | No `ANTHROPIC_API_KEY` secret, or the key was rejected | Add or rotate the secret (section 1.5) |
 | Green-lane change approved but not merged | Auto-merge not allowed in the repository | Section 1.2; or press *Merge* |
 | "Squash and merge" blocked though approved | A required check is still running or failed | Open the *Checks* tab; failures explain themselves in plain English |
-| A citizen can't send for approval (`git push` denied) | Not a collaborator with Write | Section 1.5 |
+| A citizen can't send for approval (`git push` denied) | Not a collaborator with Write | Section 1.6 |
 | Business approver's approval doesn't count | Not in CODEOWNERS, or no write access | Section 2 |
-| `engineer-approval` stays red after an engineer approved | Approval was on an older version, or the engineer isn't in `approvers.json` | Approve the latest version; check the JSON |
+| `engineer-approval` stays red after an engineer approved | Approval was on an older version, the engineer isn't in `approvers.json`, or the change came from a fork (no automatic re-run) | Approve the latest version; check the JSON; on the *Checks and approval lane* run, press **Re-run failed jobs** |
 | Codespace stops after a while | Idle timeout | Reopen it; the preview restarts automatically |

@@ -2,7 +2,7 @@
 // comment (updated, never duplicated), and switch automatic merging on (green)
 // or off (review).
 //
-// Env: PR_NUMBER, CHECK_RESULTS ("typecheck=success,lint=failure,…"),
+// Env: PR_NUMBER, HEAD_SHA, CHECK_RESULTS ("typecheck=success,lint=failure,…"),
 //      AI_VERDICT ("none" | "minor" | "serious" | ""), GH_TOKEN.
 
 import { readFileSync } from "node:fs";
@@ -53,6 +53,8 @@ function ensureLabels() {
 
 if (process.argv[1]?.endsWith("classify-pr.ts")) {
   const pr = prNumber();
+  const headSha = process.env.HEAD_SHA ?? "";
+  if (!/^[0-9a-f]{40}$/.test(headSha)) throw new Error("HEAD_SHA is not set");
   const checks = parseChecks(process.env.CHECK_RESULTS ?? "");
   const verdict = (process.env.AI_VERDICT ?? "").trim();
   const result = classifyLane({
@@ -62,21 +64,29 @@ if (process.argv[1]?.endsWith("classify-pr.ts")) {
     requireAiVerdict: true,
   });
 
-  ensureLabels();
-  const add = LABELS[result.lane], remove = LABELS[result.lane === "green" ? "review" : "green"];
-  gh(["pr", "edit", String(pr), "--add-label", add, "--remove-label", remove]);
+  // The lane goes to engineer-approval as this job's output (same workflow run),
+  // so it's set before anything that could fail.
+  setOutput("lane", result.lane);
+  const attempt = (what: string, fn: () => void) => {
+    try { fn(); return true; } catch (e) { console.warn(`Couldn't ${what}: ${e instanceof Error ? e.message : e}`); return false; }
+  };
 
+  attempt("set the lane label", () => {
+    ensureLabels();
+    const add = LABELS[result.lane], remove = LABELS[result.lane === "green" ? "review" : "green"];
+    gh(["pr", "edit", String(pr), "--add-label", add, "--remove-label", remove]);
+  });
+
+  // Automatic merging last, and pinned to the commit that was judged.
   let note: string | undefined;
-  try {
-    if (result.lane === "green") gh(["pr", "merge", String(pr), "--auto", "--squash"]);
+  const merged = attempt("update automatic merging", () => {
+    if (result.lane === "green") gh(["pr", "merge", String(pr), "--auto", "--squash", "--match-head-commit", headSha]);
     else gh(["pr", "merge", String(pr), "--disable-auto"]);
-  } catch {
-    if (result.lane === "green") note = "_Automatic merging isn't switched on for this project yet, so after approval someone needs to press **Merge**._";
-  }
+  });
+  if (!merged && result.lane === "green") note = "_Automatic merging isn't switched on for this project yet, so after approval someone needs to press **Merge**._";
 
   const body = renderLaneComment(result, checks, verdict, approvers(), note);
-  upsertComment(pr, LANE_MARKER, body);
+  attempt("post the lane comment", () => upsertComment(pr, LANE_MARKER, body));
   summary(body);
-  setOutput("lane", result.lane);
   console.log(`Lane: ${result.lane}\n${result.reasons.join("\n")}`);
 }

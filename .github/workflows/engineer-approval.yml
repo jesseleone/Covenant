@@ -1,29 +1,43 @@
-# Re-runs the "engineer-approval" check when someone approves (or the approval
-# is dismissed), so a review-lane change unblocks as soon as an engineer
-# approves. The same check also runs in pr.yml after every push.
-name: Engineer approval
+# When an engineer reviews a pull request (approves, requests changes, or has
+# a review dismissed), re-run the "engineer-approval" check in that pull
+# request's own "Checks and approval lane" run, so it turns green on approval
+# and red again if the approval is withdrawn, without anyone pressing "Re-run". This workflow
+# only asks for the re-run; the check itself (and the lane it relies on) is
+# decided inside that run, so nothing here can make it pass.
+#
+# Pull requests from forks get a read-only token: there, an engineer presses
+# "Re-run failed jobs" on the checks run after approving.
+name: Re-check engineer approval
 
 on:
   pull_request_review:
-    types: [submitted, edited, dismissed]
+    types: [submitted, dismissed]
 
 permissions:
   contents: read
-  pull-requests: read
+  actions: write
 
 jobs:
-  engineer-approval:
+  recheck:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          # Rules come from the base branch, so a change can't approve itself.
-          ref: ${{ github.event.pull_request.base.ref }}
-      - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: npm }
-      - run: npm ci
-      - name: Engineer approval (review lane only)
+          ref: ${{ github.event.pull_request.base.sha }}
+          sparse-checkout: .github/approvers.json
+      - name: Re-run the engineer-approval check after an engineer's review
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: npx tsx scripts/ci/engineer-approval.ts
+          REVIEWER: ${{ github.event.review.user.login }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          if ! jq -e --arg r "$REVIEWER" '.engineers | map(ascii_downcase) | index($r | ascii_downcase)' .github/approvers.json >/dev/null; then
+            echo "$REVIEWER isn't an engineer; nothing to re-check."; exit 0
+          fi
+          run_id=$(gh api "repos/$REPO/actions/workflows/pr.yml/runs?event=pull_request&head_sha=$HEAD_SHA&per_page=1" --jq '.workflow_runs[0].id // empty')
+          if [ -z "$run_id" ]; then echo "No checks run found for this version yet."; exit 0; fi
+          # Only that one job: never re-runs the build, tests or a paid AI review.
+          job_id=$(gh api "repos/$REPO/actions/runs/$run_id/jobs" --jq '.jobs[] | select(.name == "engineer-approval") | .id' | head -n1)
+          if [ -z "$job_id" ]; then echo "The checks run has no engineer-approval job yet."; exit 0; fi
+          gh run rerun --job "$job_id" --repo "$REPO" || echo "Couldn't re-run (no permission, or the run is still going): re-run engineer-approval by hand."

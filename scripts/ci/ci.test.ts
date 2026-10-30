@@ -8,31 +8,37 @@ const who = { engineers: ["jesseleone"], businessApprovers: ["jesse-leone"] };
 const review = (login: string, state: string, commit_id = "head", submitted_at = "2026-10-30T10:00:00Z") => ({ user: { login }, state, commit_id, submitted_at });
 
 describe("engineer-approval check", () => {
+  const base = { headSha: "head", engineers: who.engineers };
+
   it("passes green-lane changes without an engineer", () => {
-    expect(decide({ labels: ["lane: green"], reviews: [], headSha: "head", engineers: who.engineers }).pass).toBe(true);
+    expect(decide({ ...base, lane: "green", reviews: [] }).pass).toBe(true);
   });
 
   it("waits for an engineer on review-lane changes; a business approval isn't enough", () => {
-    const r = decide({ labels: ["lane: review"], reviews: [review("jesse-leone", "APPROVED")], headSha: "head", engineers: who.engineers });
+    const r = decide({ ...base, lane: "review", reviews: [review("jesse-leone", "APPROVED")] });
     expect(r).toEqual({ pass: false, message: "Review lane: waiting for an engineer (@jesseleone) to approve the latest version." });
   });
 
   it("passes once an engineer approves the latest commit, not an older one", () => {
-    expect(decide({ labels: ["lane: review"], reviews: [review("JesseLeone", "APPROVED")], headSha: "head", engineers: who.engineers }).pass).toBe(true);
-    expect(decide({ labels: ["lane: review"], reviews: [review("jesseleone", "APPROVED", "old")], headSha: "head", engineers: who.engineers }).pass).toBe(false);
+    expect(decide({ ...base, lane: "review", reviews: [review("JesseLeone", "APPROVED")] }).pass).toBe(true);
+    expect(decide({ ...base, lane: "review", reviews: [review("jesseleone", "APPROVED", "old")] }).pass).toBe(false);
   });
 
   it("uses the engineer's latest decision", () => {
     const reviews = [review("jesseleone", "APPROVED", "head", "2026-10-30T10:00:00Z"), review("jesseleone", "CHANGES_REQUESTED", "head", "2026-10-30T11:00:00Z")];
-    expect(decide({ labels: ["lane: review"], reviews, headSha: "head", engineers: who.engineers }).pass).toBe(false);
+    expect(decide({ ...base, lane: "review", reviews }).pass).toBe(false);
   });
 
-  it("fails safe before the lane is known", () => {
-    expect(decide({ labels: [], reviews: [], headSha: "head", engineers: who.engineers }).pass).toBe(false);
+  it("treats an undecided lane as review: blocked until an engineer approves, then unblocked", () => {
+    expect(decide({ ...base, lane: "", reviews: [] }).pass).toBe(false);
+    const r = decide({ ...base, lane: "", reviews: [review("jesseleone", "APPROVED")] });
+    expect(r.pass).toBe(true);
+    expect(r.message).toMatch(/couldn't be decided/);
   });
 });
 
 describe("lane comment", () => {
+
   it("explains the review lane in plain English, with check results", () => {
     const result = classifyLane({ files: ["lib/selectors.ts"], checksPassed: true, aiVerdict: "none", requireAiVerdict: true });
     const text = renderLaneComment(result, parseChecks("typecheck=success,lint=success,test=success,build=success"), "none", who);

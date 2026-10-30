@@ -2,7 +2,9 @@
 #   docker build -t covenant .
 #   docker run -p 3000:3000 -e DATABASE_URL=postgres://… [-e ANTHROPIC_API_KEY=…] covenant
 # On start it applies migrations and seeds the demo data if the database is
-# empty, then serves the app on port 3000.
+# empty, then serves the app on port 3000. "Reset demo data" is off in this
+# image; pass -e COVENANT_ALLOW_RESET=1 to allow it on a demo server.
+# Demo only: sign-in is a persona picker, so never load real fund data.
 
 FROM node:22-slim AS deps
 WORKDIR /app

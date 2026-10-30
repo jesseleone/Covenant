@@ -20,6 +20,19 @@ env:
   NEXT_TELEMETRY_DISABLED: 1
 
 jobs:
+  # Every new version starts with automatic merging off; the lane job switches
+  # it back on only if this version is green.
+  pause-auto-merge:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Switch automatic merging off until the lane is decided
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr merge "${{ github.event.pull_request.number }}" --repo "${{ github.repository }}" --disable-auto || true
+
   typecheck:
     runs-on: ubuntu-latest
     steps:
@@ -107,11 +120,19 @@ jobs:
             --max-turns 40
             --allowedTools "Read,Glob,Grep,Bash(git diff:*),Bash(git log:*),Bash(git show:*)"
             --json-schema '{"type":"object","additionalProperties":false,"required":["verdict","summary","findings"],"properties":{"verdict":{"type":"string","enum":["none","minor","serious"]},"summary":{"type":"string"},"findings":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["severity","file","issue"],"properties":{"severity":{"type":"string","enum":["serious","minor"]},"file":{"type":"string"},"line":{"type":"integer"},"issue":{"type":"string"},"suggestion":{"type":"string"}}}}}}'
+      # The script that posts the review (and passes on its verdict) comes from
+      # the base branch, so a change can't rewrite how its own review is reported.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: .base
       - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: npm }
+        with: { node-version: 22, cache: npm, cache-dependency-path: .base/package-lock.json }
       - run: npm ci
+        working-directory: .base
       - name: Post the review
         id: post
+        working-directory: .base
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -121,13 +142,17 @@ jobs:
         run: npx tsx scripts/ci/post-ai-review.ts
 
   lane:
-    needs: [typecheck, lint, test, build, ai-review]
+    needs: [pause-auto-merge, typecheck, lint, test, build, ai-review]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     permissions:
       contents: write        # enable automatic merging
       pull-requests: write   # labels, comments
       issues: write
+    outputs:
+      # Read by engineer-approval below, in this same run: nothing outside the
+      # run (labels, comments, other workflows) can change it.
+      lane: ${{ steps.decide.outputs.lane }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -137,9 +162,11 @@ jobs:
         with: { node-version: 22, cache: npm }
       - run: npm ci
       - name: Decide the lane
+        id: decide
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           CHECK_RESULTS: typecheck=${{ needs.typecheck.result }},lint=${{ needs.lint.result }},test=${{ needs.test.result }},build=${{ needs.build.result }}
           AI_VERDICT: ${{ needs.ai-review.outputs.verdict }}
         run: npx tsx scripts/ci/classify-pr.ts
@@ -162,4 +189,5 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          LANE: ${{ needs.lane.outputs.lane }}
         run: npx tsx scripts/ci/engineer-approval.ts

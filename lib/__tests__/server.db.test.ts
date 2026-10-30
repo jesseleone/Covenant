@@ -7,6 +7,7 @@ import { buildSeed } from "@/lib/seed";
 import { cushionPct, sectionIsStale, totalLeverage } from "@/lib/selectors";
 import { loadDB, saveDiff } from "@/lib/server/repo";
 import { runAction, runWithDB } from "@/lib/server/run";
+import { auditReset, resetData } from "@/lib/server/seed";
 import { freshDatabase, hasDB, reseed, testPool } from "./db-helper";
 
 describe.skipIf(!hasDB)("Postgres backend", () => {
@@ -48,6 +49,20 @@ describe.skipIf(!hasDB)("Postgres backend", () => {
 
   it("refuses edits to an issued term set at the database level too", async () => {
     await expect(p.query("UPDATE tranche SET spread_bps = 1 WHERE term_set_id = 'ts_larch_v1'")).rejects.toThrow(/cannot be edited/);
+  });
+
+  it("records who reset the data", async () => {
+    const c = await p.connect();
+    try {
+      await c.query("BEGIN");
+      await resetData(c);
+      await auditReset(c, "u_robert");
+      await c.query("COMMIT");
+    } finally {
+      c.release();
+    }
+    const { rows } = await p.query("SELECT actor_id, summary FROM audit_event WHERE action = 'demo.reset'");
+    expect(rows).toEqual([{ actor_id: "u_robert", summary: "Reset all data to the demo seed" }]);
   });
 
   it("keeps audit events append-only", async () => {
