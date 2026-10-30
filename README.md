@@ -118,10 +118,10 @@ Sign in with a quick-pick persona, or with any seeded email and any password. Sw
 
 | Document | For |
 |---|---|
-| [`docs/brief.md`](docs/brief.md) | The idea and how it works, for a mixed audience (3 pages) |
+| [`docs/brief.md`](docs/brief.md) | The idea and how it works, for a mixed audience (also as a PDF) |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Engineers: the app, extensions, workspace, harness and pipeline |
 | [`docs/admin-runbook.md`](docs/admin-runbook.md) | Administrators: GitHub settings, approvers, Claude spend controls, engineer mode |
-| [`docs/training/`](docs/training/session-plan.md) | The 45-minute session: plan, slides, facilitator script, cheat sheet, starter ideas, office hours |
+| [`docs/training/`](docs/training/session-plan.md) | The 45-minute session: plan, slides (Marp, and `docs/Covenant-training.pptx`), facilitator script, cheat sheet, starter ideas, office hours |
 | [`lib/sdk/README.md`](lib/sdk/README.md) | What an extension can use |
 | [`docs/decisions.md`](docs/decisions.md), [`docs/plan.md`](docs/plan.md) | Implementation choices and the build plan |
-| [`docs/SYSTEM.md`](docs/SYSTEM.md) | The Task 1 prototype's system explanation (unchanged; see tag `task1-v1`) |
+| [`docs/SYSTEM.md`](docs/SYSTEM.md) | The Task 1 system explanation (also as a PDF; the original prototype is at tag `task1-v1`) |
