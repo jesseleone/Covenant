@@ -53,7 +53,7 @@ npm run db:reset             # create the tables and load the demo data
 npm run dev                  # http://localhost:3000
 ```
 
-`npm run db:migrate` applies new migrations, `npm run db:seed` reloads the demo data, and **Reset demo data** in the app does the same as `db:seed` (recorded in the audit trail). Reset is on in development and Codespaces and off in the production image unless `COVENANT_ALLOW_RESET=1`.
+`npm run db:migrate` applies new migrations, `npm run db:seed` reloads the demo data, and **Reset demo data** in the app does the same as `db:seed` (the audit trail goes back to the demo's, plus a record of who reset it). Reset is on in development and Codespaces and off in the production image unless `COVENANT_ALLOW_RESET=1`.
 
 To run the production image: `docker build -t covenant .` then `docker run -p 3000:3000 -e DATABASE_URL=… covenant` (it migrates, and seeds an empty database, on start).
 

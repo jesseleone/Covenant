@@ -7,16 +7,24 @@
 
 import { readFileSync } from "node:fs";
 import { classifyLane, type AiVerdict, type LaneResult } from "./lane";
-import { changedFiles, gh, prNumber, setOutput, summary, upsertComment } from "./github";
+import { changedFiles, gh, prNumber, repo, setOutput, summary, upsertComment } from "./github";
 
 export const LANE_MARKER = "<!-- covenant:lane -->";
 export const LABELS = { green: "lane: green", review: "lane: review" } as const;
 
-/** Hidden record of which commit the lane was decided for (read by engineer-approval). */
-export const laneRecord = (sha: string, lane: string) => `<!-- covenant:lane-head:${sha}:${lane} -->`;
-export function parseLaneRecord(body: string): { sha: string; lane: "green" | "review" } | null {
-  const m = /<!-- covenant:lane-head:([0-9a-f]{7,40}):(green|review) -->/.exec(body);
-  return m ? { sha: m[1], lane: m[2] as "green" | "review" } : null;
+/**
+ * The lane decision is published as a check run named "lane-decision" on the
+ * commit it was decided for (title "green" or "review"). Only GitHub Apps,
+ * such as GitHub Actions, can create check runs, so people can't forge one;
+ * engineer-approval reads it from there.
+ */
+export const DECISION_CHECK = "lane-decision";
+
+function publishDecision(sha: string, lane: "green" | "review", reasons: string[]) {
+  gh(["api", "-X", "POST", `repos/${repo()}/check-runs`, "--input", "-"], JSON.stringify({
+    name: DECISION_CHECK, head_sha: sha, status: "completed", conclusion: lane === "green" ? "success" : "neutral",
+    output: { title: lane, summary: reasons.join("\n") },
+  }));
 }
 
 type Approvers = { engineers: string[]; businessApprovers: string[] };
@@ -60,6 +68,8 @@ function ensureLabels() {
 
 if (process.argv[1]?.endsWith("classify-pr.ts")) {
   const pr = prNumber();
+  const headSha = process.env.HEAD_SHA ?? "";
+  if (!/^[0-9a-f]{40}$/.test(headSha)) throw new Error("HEAD_SHA is not set");
   const checks = parseChecks(process.env.CHECK_RESULTS ?? "");
   const verdict = (process.env.AI_VERDICT ?? "").trim();
   const result = classifyLane({
@@ -75,14 +85,16 @@ if (process.argv[1]?.endsWith("classify-pr.ts")) {
 
   let note: string | undefined;
   try {
-    if (result.lane === "green") gh(["pr", "merge", String(pr), "--auto", "--squash"]);
+    // Pinned to the commit that was judged: a newer push can't inherit it.
+    if (result.lane === "green") gh(["pr", "merge", String(pr), "--auto", "--squash", "--match-head-commit", headSha]);
     else gh(["pr", "merge", String(pr), "--disable-auto"]);
   } catch {
     if (result.lane === "green") note = "_Automatic merging isn't switched on for this project yet, so after approval someone needs to press **Merge**._";
   }
 
   const body = renderLaneComment(result, checks, verdict, approvers(), note);
-  upsertComment(pr, LANE_MARKER, `${body}\n${laneRecord(process.env.HEAD_SHA ?? "", result.lane)}`);
+  publishDecision(headSha, result.lane, result.reasons);
+  upsertComment(pr, LANE_MARKER, body);
   summary(body);
   setOutput("lane", result.lane);
   console.log(`Lane: ${result.lane}\n${result.reasons.join("\n")}`);

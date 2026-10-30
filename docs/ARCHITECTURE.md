@@ -39,7 +39,7 @@ flowchart LR
 
 **What each browser receives:** the whole database except other people's chats (`viewFor` in `lib/server/run.ts`); chat threads are personal.
 
-**Demo-only parts:** sign-in is a persona picker whose cookie holds a plain user id, so roles and audit entries can be impersonated; "Reset demo data" is refused in production unless `COVENANT_ALLOW_RESET=1`, and is audited. Real use needs SSO and a signed session.
+**Demo-only parts:** sign-in is a persona picker whose cookie holds a plain user id, so roles and audit entries can be impersonated; "Reset demo data" is refused in production unless `COVENANT_ALLOW_RESET=1`; a reset returns the audit trail to the demo's and records who reset it. Real use needs SSO and a signed session.
 
 **Rules the database enforces on its own:** issued and locked term sets can't be edited (trigger, bypassed only by the seed transaction), and audit rows are append-only (trigger). Foreign keys are deferred, so one action's writes are checked together.
 
@@ -95,7 +95,7 @@ flowchart LR
 
 **Who approves:** `.github/CODEOWNERS` (`*` engineers, `/extensions/` business approvers) with branch protection "require code owner review". `.github/approvers.json` mirrors it for the scripts.
 
-**Trust boundaries.** The lane and engineer-approval jobs, and the step that posts the AI review's verdict, run code from the *base* branch, so a pull request can't change the rules that judge it. Each push switches auto-merge off first (`pause-auto-merge`); the lane comment records the commit it decided for, and `engineer-approval` counts a PR as green only if that commit is the latest, the label says green and the changed files still classify as green. Edits to `.github/`, `scripts/` or the harness always land in the review lane and need an engineer as code owner. The AI reviewer has read-only tools and treats the diff as data. Pull requests from forks get no secrets, so the AI review doesn't run and they fall into the review lane.
+**Trust boundaries.** The lane and engineer-approval jobs, and the step that posts the AI review's verdict, run code from the *base* branch, so a pull request can't change the rules that judge it. Each push switches auto-merge off first (`pause-auto-merge`), and auto-merge is only ever switched on for the exact commit that was judged. The lane job publishes its decision as a `lane-decision` check run on that commit; only GitHub Apps can create check runs, so people can't forge one, and comments are never trusted. `engineer-approval` counts a PR as green only if GitHub Actions' decision for the latest commit is green, the label says green and the changed files still classify as green. Edits to `.github/`, `scripts/` or the harness always land in the review lane and need an engineer as code owner. The AI reviewer has read-only tools and treats the diff as data. Pull requests from forks get no secrets, so the AI review doesn't run and they fall into the review lane.
 
 ## 5. Where each rule is enforced
 

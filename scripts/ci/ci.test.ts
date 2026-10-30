@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { classifyLane } from "./lane";
-import { decide } from "./engineer-approval";
-import { laneRecord, parseChecks, parseLaneRecord, renderLaneComment } from "./classify-pr";
+import { decide, pickDecision } from "./engineer-approval";
+import { parseChecks, renderLaneComment } from "./classify-pr";
 import { parseReview, renderReview, reviewCost } from "./post-ai-review";
 
 const who = { engineers: ["jesseleone"], businessApprovers: ["jesse-leone"] };
@@ -44,17 +44,20 @@ describe("engineer-approval check", () => {
     expect(r.message).toMatch(/latest version/);
   });
 
+  it("only trusts lane decisions published by GitHub Actions for this commit", () => {
+    const run = (title: string, slug: string, sha = "head", completed_at = "2026-10-30T10:00:00Z") => ({ name: "lane-decision", head_sha: sha, completed_at, app: { slug }, output: { title } });
+    expect(pickDecision([run("green", "github-actions")], "head")).toEqual({ sha: "head", lane: "green" });
+    expect(pickDecision([run("green", "someones-app")], "head")).toBeNull();
+    expect(pickDecision([run("green", "github-actions", "older")], "head")).toBeNull();
+    expect(pickDecision([run("green", "github-actions", "head", "2026-10-30T10:00:00Z"), run("review", "github-actions", "head", "2026-10-30T11:00:00Z")], "head")).toEqual({ sha: "head", lane: "review" });
+  });
+
   it("doesn't trust a hand-added green label when the files say review", () => {
     expect(decide({ ...base, labels: ["lane: green"], reviews: [], record: green, files: core }).pass).toBe(false);
   });
 });
 
 describe("lane comment", () => {
-  it("records which commit the lane was decided for", () => {
-    expect(parseLaneRecord(`text\n${laneRecord("abc1234def", "green")}`)).toEqual({ sha: "abc1234def", lane: "green" });
-    expect(parseLaneRecord("no record")).toBeNull();
-  });
-
 
   it("explains the review lane in plain English, with check results", () => {
     const result = classifyLane({ files: ["lib/selectors.ts"], checksPassed: true, aiVerdict: "none", requireAiVerdict: true });

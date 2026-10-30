@@ -57,7 +57,7 @@ In the Claude admin console (claude.ai, admin settings):
 - **Weekly metrics.** The *Weekly metrics* issue updates every Monday; run it any time from *Actions → Weekly metrics → Run workflow*.
 - **Retiring extensions.** The *Extensions* page flags any extension unchanged for 90 days. To retire one, delete its folder in a pull request; that's a change to one extension folder, so it takes the green lane.
 - **Rotating the API key.** Create a new key, replace the repository secret, then revoke the old key.
-- **Reset demo data.** Wipes every table and reloads the demo data; each reset is recorded in the audit trail. It's allowed in development and Codespaces, and refused in the production image unless the server is started with `COVENANT_ALLOW_RESET=1` (set `COVENANT_ALLOW_RESET=0` to refuse it anywhere).
+- **Reset demo data.** Wipes every table, including the audit trail, and reloads the demo data, then records who reset it. It's allowed in development and Codespaces, and refused in the production image unless the server is started with `COVENANT_ALLOW_RESET=1` (set `COVENANT_ALLOW_RESET=0` to refuse it anywhere).
 
 ## 5. Engineer mode
 
