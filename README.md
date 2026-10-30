@@ -102,6 +102,24 @@ Sign in with a quick-pick persona, or with any seeded email and any password. Sw
 | `lib/selectors.ts` | Derived values: leverage, cushion, stale memo sections, relationship strength |
 | `lib/gates.ts`, `lib/permissions.ts` | Stage rules and role permissions |
 | `lib/memo.ts`, `lib/render/tokens.ts` | Memo staleness, offline generation, and live-value tokens |
-| `lib/llm/` | Query tools, tool definitions, prompts, client tool loop, offline chat engine |
+| `lib/llm/` | Query tools, tool definitions, prompts, the server-side tool loop, offline chat engine |
 | `app/api/` | Route handlers: session, database read, named actions, chat, memo regeneration, reset |
-| `components/` | UI by area: `deals/`, `chat/`, `modals/`, `shell/`, `common/`, `ui/` |
+| `components/` | UI by area: `deals/`, `chat/`, `modals/`, `shell/`, `common/`, `extensions/`, `ui/` |
+| `extensions/` | Citizen-built views, one folder each (`sector-exposure/` is the reference) |
+| `lib/sdk/`, `lib/extensions/` | The extension SDK (the only thing extensions may import) and the generated extension registry |
+| `CLAUDE.md`, `AGENTS.md`, `.claude/` | The harness: instructions, settings, the guard hook, and the new-extension / preview / ship-it skills |
+| `.github/` | Workflows (checks, AI review, lanes, approval, preview, metrics), CODEOWNERS, approvers, PR template |
+| `scripts/` | Database commands, extension registry generator, CI scripts, cost and audit scripts, setup scripts |
+| `.devcontainer/` | The workspace for Codespaces and VS Code |
+
+## Documentation
+
+| Document | For |
+|---|---|
+| [`docs/brief.md`](docs/brief.md) | The idea and how it works, for a mixed audience (3 pages) |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Engineers: the app, extensions, workspace, harness and pipeline |
+| [`docs/admin-runbook.md`](docs/admin-runbook.md) | Administrators: GitHub settings, approvers, Claude spend controls, engineer mode |
+| [`docs/training/`](docs/training/session-plan.md) | The 45-minute session: plan, slides, facilitator script, cheat sheet, starter ideas, office hours |
+| [`lib/sdk/README.md`](lib/sdk/README.md) | What an extension can use |
+| [`docs/decisions.md`](docs/decisions.md), [`docs/plan.md`](docs/plan.md) | Implementation choices and the build plan |
+| [`docs/SYSTEM.md`](docs/SYSTEM.md) | The Task 1 prototype's system explanation (unchanged; see tag `task1-v1`) |
