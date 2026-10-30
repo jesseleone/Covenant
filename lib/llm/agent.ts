@@ -1,15 +1,16 @@
-"use client";
+// Server-side tool-use loop. Claude is given the 14 query tools; each call
+// runs against a snapshot of the database and the result goes back to Claude
+// until it answers. Server-only (it holds the API key).
 
-// Client-side tool-use loop. The browser holds the data, so it runs every
-// tool call itself; /api/llm only relays each turn to Claude.
-
-import type Anthropic from "@anthropic-ai/sdk";
+import Anthropic from "@anthropic-ai/sdk";
 import type { DB } from "@/lib/schema";
 import { runTool, type ToolCallRecord } from "./query-tools";
 import { TOOLS } from "./tools";
 
 type Msg = Anthropic.Beta.BetaMessageParam;
-type Block = Anthropic.Beta.BetaContentBlock;
+
+export const MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5-5";
+export const liveConfigured = () => !!process.env.ANTHROPIC_API_KEY;
 
 export class LiveUnavailable extends Error {
   constructor(public reason: "no_key" | "auth" | "network" | "upstream" | "rate_limited" | "refusal", message: string) {
@@ -21,56 +22,60 @@ export type AgentResult = { text: string; toolCalls: ToolCallRecord[]; model?: s
 
 const MAX_ITERATIONS = 8;
 
+async function createMessage(system: string, messages: Msg[], effort: "low" | "medium" | "high") {
+  if (!liveConfigured()) throw new LiveUnavailable("no_key", "No API key configured.");
+  try {
+    return await new Anthropic().beta.messages.create({
+      model: MODEL,
+      max_tokens: 16000,
+      system,
+      messages,
+      tools: TOOLS,
+      output_config: { effort },
+      // On a policy decline, the API retries on a suitable fallback model.
+      betas: ["server-side-fallback-2026-07-01"],
+      fallbacks: "default",
+    });
+  } catch (error) {
+    if (error instanceof Anthropic.AuthenticationError || error instanceof Anthropic.PermissionDeniedError) throw new LiveUnavailable("auth", "The configured API key was rejected.");
+    if (error instanceof Anthropic.RateLimitError) throw new LiveUnavailable("rate_limited", "Rate limited; try again shortly.");
+    if (error instanceof Anthropic.APIConnectionError) throw new LiveUnavailable("network", error.message);
+    if (error instanceof Anthropic.APIError) throw new LiveUnavailable("upstream", error.message);
+    throw new LiveUnavailable("upstream", error instanceof Error ? error.message : "Unknown error");
+  }
+}
+
 /**
  * Run a conversation turn to completion. `history` is earlier turns as plain
  * text; the current turn's assistant content (including thinking blocks) is
  * appended unchanged on each iteration.
  */
 export async function runAgent(opts: {
-  db: () => DB;
+  db: DB;
   system: string;
   history: { role: "user" | "assistant"; content: string }[];
   prompt: string;
   effort?: "low" | "medium" | "high";
   onStep?: (step: { name: string; input: unknown }) => void;
-  signal?: AbortSignal;
 }): Promise<AgentResult> {
   const messages: Msg[] = [...opts.history.map((m) => ({ role: m.role, content: m.content })), { role: "user", content: opts.prompt }];
   const toolCalls: ToolCallRecord[] = [];
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
-    let res: Response;
-    try {
-      res = await fetch("/api/llm", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ system: opts.system, messages, tools: TOOLS, effort: opts.effort }),
-        signal: opts.signal,
-      });
-    } catch (e) {
-      throw new LiveUnavailable("network", e instanceof Error ? e.message : "Network error");
-    }
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const reason = data.error === "no_key" || data.error === "auth" || data.error === "rate_limited" ? data.error : "upstream";
-      throw new LiveUnavailable(reason, data.message ?? `HTTP ${res.status}`);
+    const res = await createMessage(opts.system, messages, opts.effort ?? "medium");
+    if (res.stop_reason === "refusal") throw new LiveUnavailable("refusal", "The model declined this request.");
+
+    const uses = res.content.filter((b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use");
+    if (res.stop_reason !== "tool_use" || uses.length === 0) {
+      const text = res.content.filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text").map((b) => b.text).join("\n\n").trim();
+      return { text, toolCalls, model: res.model };
     }
 
-    const content = data.content as Block[];
-    const stop = data.stop_reason as string;
-    if (stop === "refusal") throw new LiveUnavailable("refusal", "The model declined this request.");
-
-    const uses = content.filter((b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use");
-    if (stop !== "tool_use" || uses.length === 0) {
-      const text = content.filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text").map((b) => b.text).join("\n\n").trim();
-      return { text, toolCalls, model: data.model };
-    }
-
-    messages.push({ role: "assistant", content: content as Anthropic.Beta.BetaContentBlockParam[] });
+    messages.push({ role: "assistant", content: res.content as Anthropic.Beta.BetaContentBlockParam[] });
     const results: Anthropic.Beta.BetaToolResultBlockParam[] = [];
     for (const u of uses) {
       opts.onStep?.({ name: u.name, input: u.input });
-      const { result, record, isError } = runTool(opts.db(), u.name, u.input);
+      const { result, record, isError } = runTool(opts.db, u.name, u.input);
       toolCalls.push(record);
       results.push({ type: "tool_result", tool_use_id: u.id, content: JSON.stringify(result), ...(isError ? { is_error: true } : {}) });
     }
@@ -78,12 +83,4 @@ export async function runAgent(opts: {
     messages.push({ role: "user", content: results });
   }
   throw new LiveUnavailable("upstream", "Stopped after too many tool calls.");
-}
-
-let liveStatus: Promise<{ configured: boolean; model: string }> | null = null;
-
-/** Whether the server has an API key configured (cached per page load). */
-export function getLiveStatus() {
-  liveStatus ??= fetch("/api/llm").then((r) => r.json()).catch(() => ({ configured: false, model: "" }));
-  return liveStatus;
 }

@@ -45,5 +45,13 @@ next-env.d.ts
 /Background Info/*
 !/Background Info/*.md
 
-# local Claude Code settings
-/.claude/
+# Claude Code: the shared config in .claude/ is committed; personal files are not
+/.claude/settings.local.json
+/.claude/tts-disabled
+/.claude/*.local.*
+
+# bundled database script (Dockerfile)
+/dist/
+
+# generated from extensions/*/manifest.json (scripts/gen-extensions.ts)
+/lib/extensions/registry.generated.ts

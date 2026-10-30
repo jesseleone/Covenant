@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ChevronDown, Gavel, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { DD_STATUSES, SEVERITIES, WORKSTREAMS, type DB, type DDItem, type Deal, type ICCondition } from "@/lib/schema";
-import { addDDItem, proposeIcCondition, updateDDItem, type NewDDItem } from "@/lib/actions";
+import { addDDItem, proposeIcCondition, updateDDItem, type NewDDItem } from "@/lib/client/actions";
 import { can } from "@/lib/permissions";
 import { useCurrentUser } from "@/lib/store";
 import { userById } from "@/lib/selectors";
@@ -100,7 +100,7 @@ function ItemCard({ db, deal, d, canEdit, onPropose, onMitigate }: { db: DB; dea
               </MenuTrigger>
               <MenuContent align="end">
                 {DD_STATUSES.map((st) => (
-                  <MenuItem key={st} onSelect={() => { const r = updateDDItem(d.id, { status: st }); if (!r.ok) toast.error(r.error); }}>{titleCase(st)}</MenuItem>
+                  <MenuItem key={st} onSelect={async () => { const r = await updateDDItem(d.id, { status: st }); if (!r.ok) toast.error(r.error); }}>{titleCase(st)}</MenuItem>
                 ))}
               </MenuContent>
             </Menu>
@@ -146,9 +146,9 @@ function ProposeDialog({ db, deal, d, onClose }: { db: DB; deal: Deal; d: DDItem
   const [type, setType] = useState<ICCondition["type"]>("pre_close");
   const [owner, setOwner] = useState(d.ownerUserId ?? deal.leadUserId);
   const [due, setDue] = useState(deal.expectedClose ?? "");
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const r = proposeIcCondition(d.id, text, type, owner, due || undefined);
+    const r = await proposeIcCondition(d.id, text, type, owner, due || undefined);
     if (!r.ok) return toast.error(r.error);
     toast.success("IC condition proposed", { description: "It appears on IC & Approvals for the committee to accept, and the finding counts as mitigated." });
     onClose();
@@ -180,9 +180,9 @@ function ProposeDialog({ db, deal, d, onClose }: { db: DB; deal: Deal; d: DDItem
 
 function MitigantDialog({ d, onClose }: { d: DDItem; onClose: () => void }) {
   const [text, setText] = useState(d.mitigant ?? "");
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const r = updateDDItem(d.id, { mitigant: text, status: text.trim() ? "mitigated" : d.status });
+    const r = await updateDDItem(d.id, { mitigant: text, status: text.trim() ? "mitigated" : d.status });
     if (!r.ok) return toast.error(r.error);
     toast.success("Mitigant saved");
     onClose();
@@ -201,9 +201,9 @@ function AddItemDialog({ db, deal, onClose }: { db: DB; deal: Deal; onClose: () 
   const team = deal.teamUserIds.map((id) => userById(db, id)!).filter(Boolean);
   const [v, setV] = useState<NewDDItem>({ workstream: "commercial", kind: "finding", title: "", detail: "", severity: "medium", ownerUserId: team[0]?.id });
   const set = (p: Partial<NewDDItem>) => setV((x) => ({ ...x, ...p }));
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const r = addDDItem(deal.id, v);
+    const r = await addDDItem(deal.id, v);
     if (!r.ok) return toast.error(r.error);
     toast.success(`Added ${v.kind}`);
     onClose();

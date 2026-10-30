@@ -4,14 +4,11 @@ import { useState } from "react";
 import { Check, ClipboardCopy, Database, Loader2, Pencil, RefreshCw, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import type { DB, Deal, Memo, MemoSection } from "@/lib/schema";
-import { markMemoReady, markSectionReviewed, regenerateSections, updateSectionContent } from "@/lib/actions";
+import { getLiveStatus, markMemoReady, markSectionReviewed, regenerateMemoSections, updateSectionContent } from "@/lib/client/actions";
 import { can } from "@/lib/permissions";
 import { useCurrentUser } from "@/lib/store";
 import { activeTermSet, sectionIsStale, serializeDependency, userById } from "@/lib/selectors";
-import { depDisplay, depLabel, queriesFor, staleReasons, typedFigures } from "@/lib/memo";
-import { LiveUnavailable, getLiveStatus, runAgent } from "@/lib/llm/agent";
-import { memoSystemPrompt } from "@/lib/llm/prompts";
-import { useDBStore } from "@/lib/store";
+import { depDisplay, depLabel, queriesFor, staleReasons } from "@/lib/memo";
 import { renderMarkdown, segment } from "@/lib/render/tokens";
 import { fmtDateShort, titleCase } from "@/lib/format";
 import { Button, Card, Chip, EmptyState, cn } from "@/components/ui/primitives";
@@ -40,35 +37,19 @@ function MemoView({ db, deal, memo, memos, onSelect }: { db: DB; deal: Deal; mem
   const regenerate = async (ids: string[]) => {
     setBusy(ids);
     const { configured } = await getLiveStatus();
-    const contentById: Record<string, string> = {};
-    let fallbackNote = "";
-    if (configured) {
-      for (const id of ids) {
-        const section = sections.find((s) => s.id === id)!;
-        try {
-          contentById[id] = await regenerateLive(deal, section);
-        } catch (e) {
-          fallbackNote = e instanceof LiveUnavailable ? `Live AI unavailable (${e.message}); used offline text.` : e instanceof Error ? e.message : "Live regeneration failed.";
-          if (e instanceof LiveUnavailable) break;
-        }
-      }
-    } else {
-      // A short pause so the offline rebuild reads as work being done.
-      await new Promise((r) => setTimeout(r, 700));
-    }
-    const r = regenerateSections(ids, Object.keys(contentById).length ? contentById : undefined);
+    // Offline rebuilds are instant; a short pause so it reads as work being done.
+    const [{ result: r, liveCount, note }] = await Promise.all([regenerateMemoSections(ids), new Promise((res) => setTimeout(res, configured ? 0 : 700))]);
     setBusy([]);
     if (!r.ok) return toast.error(r.error);
-    const liveCount = Object.keys(contentById).length;
     toast.success(`Regenerated ${ids.length} section${ids.length === 1 ? "" : "s"}`, {
       description: liveCount === ids.length ? "Written by Claude from the current records. Review before marking ready."
-        : fallbackNote || "Offline mode: rebuilt from the current records. Review before marking ready.",
+        : note || "Offline mode: rebuilt from the current records. Review before marking ready.",
     });
   };
 
   const readyBlocker = stale.length ? `${stale.length} stale section${stale.length === 1 ? "" : "s"}` : reviewed.length < sections.length ? `${sections.length - reviewed.length} section${sections.length - reviewed.length === 1 ? "" : "s"} not reviewed` : null;
-  const onReady = () => {
-    const r = markMemoReady(memo.id);
+  const onReady = async () => {
+    const r = await markMemoReady(memo.id);
     if (!r.ok) return toast.error(r.error);
     toast.success("Memo marked ready for IC", { description: "The IC gate's memo requirement is now met." });
   };
@@ -151,8 +132,8 @@ function SectionView({ db, deal, s, canEdit, busy, onRegenerate }: { db: DB; dea
   const stale = reasons.length > 0;
   const reviewer = userById(db, s.reviewedBy);
 
-  const review = () => { const r = markSectionReviewed(s.id); if (!r.ok) toast.error(r.error); else toast.success(`Reviewed ${s.title}`); };
-  const save = () => { const r = updateSectionContent(s.id, draft!); if (!r.ok) return toast.error(r.error); setDraft(null); toast.success(`Saved ${s.title}`); };
+  const review = async () => { const r = await markSectionReviewed(s.id); if (!r.ok) toast.error(r.error); else toast.success(`Reviewed ${s.title}`); };
+  const save = async () => { const r = await updateSectionContent(s.id, draft!); if (!r.ok) return toast.error(r.error); setDraft(null); toast.success(`Saved ${s.title}`); };
 
   return (
     <section id={s.key} className="scroll-mt-4">
@@ -253,25 +234,4 @@ function DataDrawer({ db, deal, s }: { db: DB; deal: Deal; s: MemoSection }) {
       </div>
     </div>
   );
-}
-
-/**
- * Ask Claude to rewrite one section from current records. Typed figures are
- * sent back once for correction; a second failure raises so the offline
- * text is used instead.
- */
-async function regenerateLive(deal: Deal, section: MemoSection): Promise<string> {
-  const db = () => useDBStore.getState().db;
-  const reasons = staleReasons(db(), section).map((r) => `${r.label}: ${r.before} -> ${r.after}`);
-  const prompt = `Current text of the section:\n\n${section.content}\n\n${reasons.length ? `These inputs changed since it was written: ${reasons.join("; ")}.` : "Refresh it against the current records."} Rewrite the section.`;
-  const system = memoSystemPrompt(db(), deal.id, section);
-  const first = await runAgent({ db, system, history: [], prompt });
-  const bad = typedFigures(first.text);
-  if (!bad.length && first.text) return first.text;
-  const second = await runAgent({
-    db, system, history: [{ role: "user", content: prompt }, { role: "assistant", content: first.text }],
-    prompt: `These figures are typed as text: ${bad.join(", ")}. Replace each with the matching token and return the full section again.`,
-  });
-  if (typedFigures(second.text).length || !second.text) throw new Error(`${section.title}: the AI draft typed figures instead of tokens; used offline text.`);
-  return second.text;
 }

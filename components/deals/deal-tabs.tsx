@@ -1,8 +1,12 @@
 "use client";
 
-// Deal tab router; each tab lives in its own file.
+// Deal tab router; each tab lives in its own file. Extensions with placement
+// "deal-tab" are added after the built-in tabs.
 
+import { Puzzle } from "lucide-react";
 import type { Deal } from "@/lib/schema";
+import { dealTabExtensions, extensionBySlug } from "@/lib/extensions";
+import { ExtensionBadge, ExtensionFrame } from "@/components/extensions/extension-frame";
 import { useDB } from "@/lib/store";
 import { EmptyState } from "@/components/ui/primitives";
 import { NotesPanel } from "@/components/common/notes-panel";
@@ -29,6 +33,15 @@ export const DEAL_TABS = [
   { slug: "history", label: "History" },
 ];
 
+/** Built-in tabs plus extension tabs (marked with a puzzle icon). */
+export const allDealTabs = () => [
+  ...DEAL_TABS,
+  ...dealTabExtensions().map((e) => ({
+    slug: e.slug, label: e.manifest.name,
+    badge: <Puzzle size={12} className="text-text-3" aria-label="Extension" />,
+  })),
+];
+
 export function DealTab({ tab, deal }: { tab: string; deal: Deal }) {
   const db = useDB();
   switch (tab) {
@@ -42,6 +55,16 @@ export function DealTab({ tab, deal }: { tab: string; deal: Deal }) {
     case "documents": return <DocumentsTab db={db} deal={deal} />;
     case "notes": return <NotesPanel db={db} subject={{ type: "deal", id: deal.id }} notes={db.notes.filter((n) => n.subject.type === "deal" && n.subject.id === deal.id)} />;
     case "history": return <HistoryTab db={db} deal={deal} />;
-    default: return <EmptyState title="Unknown tab" />;
+    default: {
+      const ext = extensionBySlug(tab);
+      if (!ext || ext.placement !== "deal-tab") return <EmptyState title="Unknown tab" />;
+      const View = ext.Component;
+      return (
+        <div className="space-y-3">
+          <div className="flex justify-end"><ExtensionBadge ext={ext} /></div>
+          <ExtensionFrame ext={ext}><View deal={deal} /></ExtensionFrame>
+        </div>
+      );
+    }
   }
 }

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { moveStage, reopenDeal, setDealOutcome } from "@/lib/actions";
-import { resetDemoData, signIn, useDBStore } from "@/lib/store";
+import { resetDemoData, signIn, useDBStore } from "./harness";
 
 const db = () => useDBStore.getState().db;
 const deal = (id: string) => db().deals.find((d) => d.id === id)!;

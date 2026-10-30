@@ -6,7 +6,7 @@ import { Check, CircleDashed, Lock, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { STAGE_LABELS, STRATEGY_LABELS, type DB, type Deal } from "@/lib/schema";
 import { HARD_GATES, checklistFor, nextStage } from "@/lib/gates";
-import { updateDealText } from "@/lib/actions";
+import { updateDealText } from "@/lib/client/actions";
 import { can } from "@/lib/permissions";
 import { useCurrentUser } from "@/lib/store";
 import { activeTermSet, userById } from "@/lib/selectors";
@@ -128,8 +128,8 @@ function EditableText({ deal, field, title }: { deal: Deal; field: "summary" | "
   const user = useCurrentUser();
   const [draft, setDraft] = useState<string | null>(null);
   const canEdit = !!user && can(user.role, "edit_deal");
-  const save = () => {
-    const r = updateDealText(deal.id, field, draft!.trim());
+  const save = async () => {
+    const r = await updateDealText(deal.id, field, draft!.trim());
     if (!r.ok) return toast.error(r.error);
     setDraft(null);
     toast.success(`${title} saved`);

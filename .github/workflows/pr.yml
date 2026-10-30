@@ -1,0 +1,165 @@
+# Every pull request: automatic checks, then an AI review, then the lane
+# decision (green: one business approver; review: an engineer).
+# Required checks (set in branch protection): typecheck, lint, test, build,
+# ai-review, lane, engineer-approval. See docs/admin-runbook.md.
+name: Checks and approval lane
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CI: true
+  NEXT_TELEMETRY_DISABLED: 1
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run typecheck
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run extensions
+      # Includes the rule that keeps extensions inside the SDK.
+      - run: npm run lint
+
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: covenant_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 2s --health-timeout 3s --health-retries 30
+    env:
+      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/covenant_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm test
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run build
+
+  ai-review:
+    needs: [typecheck, lint, test, build]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    outputs:
+      verdict: ${{ steps.post.outputs.verdict }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Prepare the review instructions
+        id: prompt
+        run: |
+          {
+            echo "text<<__EOF__"
+            sed "s|{{BASE}}|${{ github.base_ref }}|g" .github/ai-review/prompt.md
+            echo "Pull request: #${{ github.event.pull_request.number }} in ${{ github.repository }}."
+            echo "__EOF__"
+          } >> "$GITHUB_OUTPUT"
+      - name: AI review (Claude Opus)
+        id: claude
+        # Never blocks on its own: if it can't run (no API key, a fork), the
+        # lane falls back to an engineer's review.
+        continue-on-error: true
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: ${{ steps.prompt.outputs.text }}
+          claude_args: |
+            --model opus
+            --max-turns 40
+            --allowedTools "Read,Glob,Grep,Bash(git diff:*),Bash(git log:*),Bash(git show:*)"
+            --json-schema '{"type":"object","additionalProperties":false,"required":["verdict","summary","findings"],"properties":{"verdict":{"type":"string","enum":["none","minor","serious"]},"summary":{"type":"string"},"findings":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["severity","file","issue"],"properties":{"severity":{"type":"string","enum":["serious","minor"]},"file":{"type":"string"},"line":{"type":"integer"},"issue":{"type":"string"},"suggestion":{"type":"string"}}}}}}'
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - name: Post the review
+        id: post
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          STRUCTURED_OUTPUT: ${{ steps.claude.outputs.structured_output }}
+          EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
+          REVIEW_MODEL: opus
+        run: npx tsx scripts/ci/post-ai-review.ts
+
+  lane:
+    needs: [typecheck, lint, test, build, ai-review]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write        # enable automatic merging
+      pull-requests: write   # labels, comments
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The rules come from the base branch, so a change can't rewrite them to approve itself.
+          ref: ${{ github.event.pull_request.base.sha }}
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - name: Decide the lane
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          CHECK_RESULTS: typecheck=${{ needs.typecheck.result }},lint=${{ needs.lint.result }},test=${{ needs.test.result }},build=${{ needs.build.result }}
+          AI_VERDICT: ${{ needs.ai-review.outputs.verdict }}
+        run: npx tsx scripts/ci/classify-pr.ts
+
+  engineer-approval:
+    needs: [lane]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - name: Engineer approval (review lane only)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: npx tsx scripts/ci/engineer-approval.ts

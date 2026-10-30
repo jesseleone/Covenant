@@ -1,47 +1,57 @@
 "use client";
 
-// The in-browser database. One Zustand store holds every record and is saved
-// to localStorage; a second, smaller store holds the signed-in persona.
-//
-// Writes go through named actions (the ontology's actions). Each one checks
-// permissions, applies the change and appends an AuditEvent; see `commit`.
+// The browser's read cache of the database. The source of truth is Postgres
+// on the server: the cache is filled from GET /api/db and replaced with the
+// server's copy after every write (lib/client/actions.ts). The signed-in
+// persona lives in an http-only cookie; this store mirrors its id.
 
 import { create } from "zustand";
-import { createJSONStorage, persist } from "zustand/middleware";
-import { nanoid } from "nanoid";
-import type { AuditEvent, DB, User } from "@/lib/schema";
-import { buildSeed, SEED_VERSION } from "@/lib/seed";
-import { can, ACTION_DENIED, type Action } from "@/lib/permissions";
+import type { DB, User } from "@/lib/schema";
 
-// ---------------------------------------------------------------------------
-// Stores
-// ---------------------------------------------------------------------------
+export type { ActionResult } from "@/lib/core/commit";
+
+/** An empty database holding just the personas (before sign-in). */
+export function emptyDB(users: User[] = []): DB {
+  return {
+    users, companies: [], people: [], affiliations: [], deals: [], stakeholders: [], stageEvents: [], notes: [], documents: [],
+    extractedFields: [], financialPeriods: [], termSets: [], tranches: [], covenants: [], ddItems: [], memos: [], memoSections: [],
+    icEvents: [], icConditions: [], devilsAdvocate: [], chatThreads: [], chatMessages: [], auditEvents: [],
+    settings: { coverageCushionGuidelinePct: 25, today: new Date().toISOString().slice(0, 10) },
+  };
+}
 
 type DBState = { db: DB };
-
-export const useDBStore = create<DBState>()(
-  persist(() => ({ db: buildSeed() }), {
-    name: "covenant-db-v1",
-    version: SEED_VERSION,
-    storage: createJSONStorage(() => localStorage),
-    skipHydration: true,
-    // A browser holding an older seed starts again from the current one.
-    migrate: () => ({ db: buildSeed() }),
-  }),
-);
+export const useDBStore = create<DBState>()(() => ({ db: emptyDB() }));
 
 type SessionState = { userId: string | null };
+export const useSessionStore = create<SessionState>()(() => ({ userId: null }));
 
-export const useSessionStore = create<SessionState>()(
-  persist(() => ({ userId: null as string | null }), {
-    name: "covenant-session",
-    storage: createJSONStorage(() => localStorage),
-    skipHydration: true,
-  }),
-);
+/** Replace the cache with the server's copy. */
+export const setDB = (db: DB) => useDBStore.setState({ db });
 
+async function getJSON(url: string, init?: RequestInit) {
+  const res = await fetch(url, { cache: "no-store", ...init });
+  const data = await res.json().catch(() => ({}));
+  return { ok: res.ok, status: res.status, data };
+}
+
+/** Reload the cache from the server. A lost session signs the browser out. */
+export async function refreshDB() {
+  const r = await getJSON("/api/db");
+  if (r.status === 401) {
+    useSessionStore.setState({ userId: null });
+    return;
+  }
+  if (r.ok) setDB(r.data.db);
+}
+
+/** Load the session and, when signed in, the database. */
 export async function hydrateStores() {
-  await Promise.all([useDBStore.persist.rehydrate(), useSessionStore.persist.rehydrate()]);
+  const r = await getJSON("/api/session");
+  if (!r.ok) throw new Error(r.data?.message ?? "The server is not available.");
+  useDBStore.setState({ db: emptyDB(r.data.users) });
+  useSessionStore.setState({ userId: r.data.userId });
+  if (r.data.userId) await refreshDB();
 }
 
 // ---------------------------------------------------------------------------
@@ -61,50 +71,22 @@ export function useCurrentUser(): User | null {
 // Session actions
 // ---------------------------------------------------------------------------
 
-export const signIn = (userId: string) => useSessionStore.setState({ userId });
-export const signOut = () => useSessionStore.setState({ userId: null });
-
-export function resetDemoData() {
-  useDBStore.setState({ db: buildSeed() });
+export async function signIn(userId: string) {
+  const r = await getJSON("/api/session", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ userId }) });
+  if (!r.ok) throw new Error(r.data?.message ?? "Sign-in failed.");
+  await refreshDB();
+  useSessionStore.setState({ userId });
 }
 
-// ---------------------------------------------------------------------------
-// Write helpers used by the domain actions added in later steps
-// ---------------------------------------------------------------------------
-
-export type ActionResult = { ok: true } | { ok: false; error: string };
-
-export const nowIso = () => new Date().toISOString();
-export const newId = (prefix: string) => `${prefix}_${nanoid(8)}`;
-
-/**
- * Apply `recipe` to a copy of the DB as the current user, after checking
- * `action`. The recipe returns the audit entries to append.
- */
-export function commit(
-  action: Action,
-  recipe: (draft: DB, actor: User) => Omit<AuditEvent, "id" | "actorId" | "at">[] | ActionResult,
-): ActionResult {
-  const { db } = useDBStore.getState();
-  const actor = db.users.find((u) => u.id === useSessionStore.getState().userId);
-  if (!actor) return { ok: false, error: "Not signed in." };
-  if (!can(actor.role, action)) return { ok: false, error: ACTION_DENIED[action] };
-
-  const draft = structuredClone(db);
-  const result = recipe(draft, actor);
-  if (!Array.isArray(result)) return result;
-  const at = nowIso();
-  for (const e of result) draft.auditEvents.push({ id: newId("ae"), actorId: actor.id, at, ...e });
-  useDBStore.setState({ db: draft });
-  return { ok: true };
+export async function signOut() {
+  await getJSON("/api/session", { method: "DELETE" });
+  useSessionStore.setState({ userId: null });
+  useDBStore.setState((s) => ({ db: emptyDB(s.db.users) }));
 }
 
-/**
- * Personal, unaudited writes (chat threads and messages). Domain records go
- * through `commit` instead.
- */
-export function mutate(recipe: (draft: DB) => void) {
-  const draft = structuredClone(useDBStore.getState().db);
-  recipe(draft);
-  useDBStore.setState({ db: draft });
+/** Restore the seed on the server ("Reset demo data"). */
+export async function resetDemoData() {
+  const r = await getJSON("/api/reset", { method: "POST" });
+  if (!r.ok) throw new Error(r.data?.message ?? "Reset failed.");
+  setDB(r.data.db);
 }

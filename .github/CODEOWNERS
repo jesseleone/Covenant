@@ -1,0 +1,11 @@
+# Who must approve changes, by path. The last matching line wins.
+# Keep in step with .github/approvers.json. To change who approves, replace the
+# usernames below (see docs/admin-runbook.md). On a GitHub organization you can
+# use teams instead, e.g. @fernhill/engineers and @fernhill/deal-team-approvers.
+
+# Engineers own everything by default: the app's core, data, calculations,
+# permissions, workflows and Claude's guardrails.
+*               @jesseleone
+
+# Business approvers own extensions (the citizen-built views).
+/extensions/    @jesse-leone

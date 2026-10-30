@@ -5,7 +5,7 @@ import Fuse from "fuse.js";
 import { Building2, Plus, Trash2, User } from "lucide-react";
 import { toast } from "sonner";
 import { STAKEHOLDER_SIDES, type DB, type Deal, type Stakeholder } from "@/lib/schema";
-import { addStakeholder, removeStakeholder } from "@/lib/actions";
+import { addStakeholder, removeStakeholder } from "@/lib/client/actions";
 import { can } from "@/lib/permissions";
 import { useCurrentUser } from "@/lib/store";
 import { openNew } from "@/lib/ui";
@@ -58,7 +58,7 @@ export function StakeholdersTab({ db, deal }: { db: DB; deal: Deal }) {
                       </div>
                     )}
                     {canEdit && (
-                      <button onClick={() => { const r = removeStakeholder(s.id); if (!r.ok) toast.error(r.error); }} aria-label="Remove" className="rounded p-1 text-text-3 opacity-0 group-hover:opacity-100 hover:text-danger"><Trash2 size={14} /></button>
+                      <button onClick={async () => { const r = await removeStakeholder(s.id); if (!r.ok) toast.error(r.error); }} aria-label="Remove" className="rounded p-1 text-text-3 opacity-0 group-hover:opacity-100 hover:text-danger"><Trash2 size={14} /></button>
                     )}
                   </div>
                 );
@@ -103,10 +103,10 @@ function AddStakeholderDialog({ db, deal, onClose }: { db: DB; deal: Deal; onClo
     const s: Stakeholder["side"] = p ? (p.personType === "management" ? "borrower" : p.personType === "sponsor" ? "sponsor" : p.personType === "lender" ? "lender" : "advisor") : "advisor";
     setSide(s);
   };
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!pick) return;
-    const r = addStakeholder(deal.id, { personId: pick.type === "person" ? pick.id : undefined, companyId: pick.type === "company" ? pick.id : undefined, role, side });
+    const r = await addStakeholder(deal.id, { personId: pick.type === "person" ? pick.id : undefined, companyId: pick.type === "company" ? pick.id : undefined, role, side });
     if (!r.ok) return toast.error(r.error);
     toast.success(`Added ${pick.name}`);
     onClose();

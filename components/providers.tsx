@@ -7,17 +7,18 @@ import { Tooltip } from "radix-ui";
 import { hydrateStores } from "@/lib/store";
 
 export function Providers({ children }: { children: React.ReactNode }) {
-  // The DB lives in localStorage, so nothing store-dependent renders until the
-  // stores have hydrated in the browser. This also avoids hydration mismatches.
+  // The read cache is filled from the server (GET /api/session, /api/db), so
+  // nothing store-dependent renders until it has loaded.
   const [ready, setReady] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   useEffect(() => {
-    hydrateStores().then(() => setReady(true));
+    hydrateStores().then(() => setReady(true), (e: Error) => setError(e.message));
   }, []);
 
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
       <Tooltip.Provider delayDuration={250}>
-        {ready ? children : <Splash />}
+        {ready ? children : <Splash error={error} />}
         <Toaster
           position="bottom-right"
           toastOptions={{
@@ -30,11 +31,17 @@ export function Providers({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Splash() {
+function Splash({ error }: { error: string | null }) {
   return (
-    <div className="flex h-full items-center justify-center">
-      <div className="flex items-center gap-2 text-text-3">
+    <div className="flex h-full items-center justify-center px-4">
+      <div className="flex max-w-[420px] flex-col items-center gap-3 text-center text-text-3">
         <Monogram size={28} />
+        {error && (
+          <p className="text-[13px] text-text-2">
+            Covenant can&apos;t reach its database. If you&apos;re running it yourself, start Postgres
+            (<code className="font-mono text-[12px]">docker compose up -d db</code>) and reload. ({error})
+          </p>
+        )}
       </div>
     </div>
   );

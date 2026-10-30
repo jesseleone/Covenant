@@ -43,7 +43,7 @@ export function UserMenu() {
               {DEMO_PERSONAS.map((p) => {
                 const u = db.users.find((x) => x.id === p.userId)!;
                 return (
-                  <MenuItem key={p.userId} onSelect={() => { signIn(p.userId); toast(`Signed in as ${u.name}`, { description: ROLE_LABELS[u.role] }); }}>
+                  <MenuItem key={p.userId} onSelect={async () => { await signIn(p.userId); toast(`Signed in as ${u.name}`, { description: ROLE_LABELS[u.role] }); }}>
                     <span className="w-4">{u.id === user.id && <Check size={14} />}</span>
                     <span className="flex-1">{u.name}</span>
                     <span className="text-[12px] text-text-3">{p.label}</span>
@@ -65,14 +65,17 @@ export function UserMenu() {
           </MenuSub>
           <MenuItem onSelect={() => setConfirmReset(true)}><RotateCcw size={15} />Reset demo data</MenuItem>
           <MenuSeparator />
-          <MenuItem onSelect={() => { signOut(); router.replace("/login"); }}><LogOut size={15} />Sign out</MenuItem>
+          <MenuItem onSelect={async () => { await signOut(); router.replace("/login"); }}><LogOut size={15} />Sign out</MenuItem>
         </MenuContent>
       </Menu>
 
-      <Dialog open={confirmReset} onOpenChange={setConfirmReset} title="Reset demo data?" description="Every change made in this browser is discarded and the seed data is restored.">
+      <Dialog open={confirmReset} onOpenChange={setConfirmReset} title="Reset demo data?" description="Every change in the database, by anyone, is discarded and the seed data is restored.">
         <div className="flex justify-end gap-2">
           <Button variant="ghost" onClick={() => setConfirmReset(false)}>Cancel</Button>
-          <Button variant="primary" onClick={() => { resetDemoData(); setConfirmReset(false); toast("Demo data reset"); }}>Reset</Button>
+          <Button variant="primary" onClick={async () => {
+            try { await resetDemoData(); toast("Demo data reset"); } catch (e) { toast.error(e instanceof Error ? e.message : "Reset failed"); }
+            setConfirmReset(false);
+          }}>Reset</Button>
         </div>
       </Dialog>
     </>
