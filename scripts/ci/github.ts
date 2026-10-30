@@ -23,9 +23,8 @@ export function changedFiles(pr: number): string[] {
   return pages.flat().map((f) => f.filename);
 }
 
-/** The account GitHub Actions comments and checks as (GITHUB_TOKEN). People can't act as it. */
+/** The account GitHub Actions comments as (GITHUB_TOKEN). */
 export const ACTIONS_BOT = "github-actions[bot]";
-export const ACTIONS_APP = "github-actions";
 
 /**
  * Create or update the single comment that starts with `marker`. Only comments
