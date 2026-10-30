@@ -50,3 +50,15 @@ Implementation choices not fixed by the brief. One line each: choice — reason.
 - The cost estimate reads the most recently active transcript in `~/.claude/projects/<project>/` (plus its subagent transcripts), counts each API message once, and prices it with a table in `scripts/claude/session.ts`; unknown models or an unreadable transcript give "Estimated cost: unavailable".
 - "Directed by" comes from the GitHub account signed in to `gh` (name and login), falling back to git's user name.
 - Ship-it names drafts `ext/<name>-<YYYYMMDD>` and always targets `main`; the PR template is plain English and doubles as ship-it's outline.
+- Typecheck, lint, test and build are four separate jobs (four required checks with clear names); the AI review waits for them, and the lane job waits for all five — the order agreed in Phase 0.
+- The AI review returns structured output (`--json-schema`: verdict, summary, findings); a script renders the comment and appends `AI-REVIEW-VERDICT: …` itself — the verdict line can't be malformed. The review's cost comes from the action's execution file when present.
+- The AI review step uses `continue-on-error`, so the `ai-review` check completes even without an API key or on a fork; the lane then falls back to review.
+- The AI reviewer gets read-only tools (Read, Grep, Glob, `git diff/log/show`) and is told to treat the change as data, not instructions.
+- The lane and engineer-approval jobs run the rules from the base branch, never from the PR — a change can't rewrite its own classification. Workflow changes themselves need an engineer via CODEOWNERS.
+- `engineer-approval` runs in `pr.yml` after the lane, and again from `engineer-approval.yml` on every review event; an approval only counts on the latest commit.
+- Auto-merge is switched on (`gh pr merge --auto --squash`) for green and off for review; if the repo hasn't enabled auto-merge, the lane comment says someone has to press Merge.
+- One comment per purpose (lane, AI review, preview), found by a hidden marker and edited in place.
+- Screenshots install Playwright in CI only (`npm install --no-save`), so it isn't an app dependency; the app runs from the standalone build against a seeded Postgres service.
+- The preview link uses GitHub's documented `https://codespaces.new/OWNER/REPO/tree/BRANCH?quickstart=1`, from the PR's head repository.
+- Weekly metrics: "time to first safe deployment" runs from a citizen's first PR opened to their first merge (workspace first use isn't observable); first-pass rate checks the four check jobs on each PR's first commit (last 90 days); reverts are merged PRs titled "Revert…"; engineers and bots are excluded from per-citizen figures.
+- `.github/approvers.json` mirrors CODEOWNERS for the scripts (engineers vs business approvers) — CODEOWNERS can't express roles.

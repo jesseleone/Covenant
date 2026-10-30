@@ -1,0 +1,29 @@
+# Re-runs the "engineer-approval" check when someone approves (or the approval
+# is dismissed), so a review-lane change unblocks as soon as an engineer
+# approves. The same check also runs in pr.yml after every push.
+name: Engineer approval
+
+on:
+  pull_request_review:
+    types: [submitted, edited, dismissed]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  engineer-approval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Rules come from the base branch, so a change can't approve itself.
+          ref: ${{ github.event.pull_request.base.ref }}
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - name: Engineer approval (review lane only)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: npx tsx scripts/ci/engineer-approval.ts

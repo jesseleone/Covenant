@@ -1,0 +1,75 @@
+# Every pull request: a comment with an "Open live preview" button (a Codespace
+# on the PR's branch), and screenshots of any changed extension. Not a required
+# check: it informs approvers but never blocks.
+name: Preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: covenant
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 2s --health-timeout 3s --health-retries 30
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+      HEAD_REF: ${{ github.event.pull_request.head.ref }}
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/covenant
+      NEXT_TELEMETRY_DISABLED: 1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - name: Post the preview link
+        id: link
+        run: npx tsx scripts/ci/preview-comment.ts link
+
+      # Screenshots, only when an extension changed.
+      - name: Load the demo data
+        if: steps.link.outputs.extensions != ''
+        run: npm run db:migrate && npm run db:seed
+      - name: Build and start the app
+        if: steps.link.outputs.extensions != ''
+        run: |
+          npm run build
+          cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/
+          PORT=3000 HOSTNAME=127.0.0.1 nohup node .next/standalone/server.js > /tmp/app.log 2>&1 &
+          for _ in $(seq 1 60); do curl -fsS http://127.0.0.1:3000/api/llm >/dev/null && break; sleep 1; done
+      - name: Take screenshots
+        if: steps.link.outputs.extensions != ''
+        run: |
+          npm install --no-save playwright@1.64.1
+          npx playwright install --with-deps chromium
+          node scripts/ci/screenshots.mjs http://127.0.0.1:3000 screenshots "${{ steps.link.outputs.extensions }}"
+      - name: Upload screenshots
+        id: upload
+        if: steps.link.outputs.extensions != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-screenshots-pr${{ github.event.pull_request.number }}
+          path: screenshots/
+          retention-days: 14
+      - name: Link the screenshots
+        if: steps.link.outputs.extensions != ''
+        run: npx tsx scripts/ci/preview-comment.ts screenshots "${{ steps.upload.outputs.artifact-url }}"
