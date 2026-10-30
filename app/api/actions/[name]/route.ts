@@ -2,7 +2,7 @@
 // returns its result with the updated database.
 
 import type { NextRequest } from "next/server";
-import { isActionName, readDB, runAction } from "@/lib/server/run";
+import { isActionName, readDBFor, runAction } from "@/lib/server/run";
 import { currentUserId, unauthorized } from "@/lib/server/session";
 
 export async function POST(req: NextRequest, ctx: RouteContext<"/api/actions/[name]">) {
@@ -16,11 +16,11 @@ export async function POST(req: NextRequest, ctx: RouteContext<"/api/actions/[na
 
   try {
     const result = await runAction(name, body.args, actorId);
-    return Response.json({ result, db: await readDB() });
+    return Response.json({ result, db: await readDBFor(actorId) });
   } catch (e) {
     // Database constraints are the last line of defence (e.g. a locked term set).
     const message = e instanceof Error ? e.message : String(e);
     console.error(`Action ${name} failed:`, message);
-    return Response.json({ result: { ok: false, error: `The change was not saved: ${message}` }, db: await readDB() }, { status: 500 });
+    return Response.json({ result: { ok: false, error: `The change was not saved: ${message}` }, db: await readDBFor(actorId) }, { status: 500 });
   }
 }

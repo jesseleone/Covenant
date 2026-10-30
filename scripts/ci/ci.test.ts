@@ -1,38 +1,61 @@
 import { describe, expect, it } from "vitest";
 import { classifyLane } from "./lane";
 import { decide } from "./engineer-approval";
-import { parseChecks, renderLaneComment } from "./classify-pr";
+import { laneRecord, parseChecks, parseLaneRecord, renderLaneComment } from "./classify-pr";
 import { parseReview, renderReview, reviewCost } from "./post-ai-review";
 
 const who = { engineers: ["jesseleone"], businessApprovers: ["jesse-leone"] };
 const review = (login: string, state: string, commit_id = "head", submitted_at = "2026-10-30T10:00:00Z") => ({ user: { login }, state, commit_id, submitted_at });
 
 describe("engineer-approval check", () => {
+  const ext = ["extensions/a/index.tsx"];
+  const core = ["lib/selectors.ts"];
+  const green = { sha: "head", lane: "green" as const };
+  const reviewLane = { sha: "head", lane: "review" as const };
+  const base = { headSha: "head", engineers: who.engineers };
+
   it("passes green-lane changes without an engineer", () => {
-    expect(decide({ labels: ["lane: green"], reviews: [], headSha: "head", engineers: who.engineers }).pass).toBe(true);
+    expect(decide({ ...base, labels: ["lane: green"], reviews: [], record: green, files: ext }).pass).toBe(true);
   });
 
   it("waits for an engineer on review-lane changes; a business approval isn't enough", () => {
-    const r = decide({ labels: ["lane: review"], reviews: [review("jesse-leone", "APPROVED")], headSha: "head", engineers: who.engineers });
+    const r = decide({ ...base, labels: ["lane: review"], reviews: [review("jesse-leone", "APPROVED")], record: reviewLane, files: core });
     expect(r).toEqual({ pass: false, message: "Review lane: waiting for an engineer (@jesseleone) to approve the latest version." });
   });
 
   it("passes once an engineer approves the latest commit, not an older one", () => {
-    expect(decide({ labels: ["lane: review"], reviews: [review("JesseLeone", "APPROVED")], headSha: "head", engineers: who.engineers }).pass).toBe(true);
-    expect(decide({ labels: ["lane: review"], reviews: [review("jesseleone", "APPROVED", "old")], headSha: "head", engineers: who.engineers }).pass).toBe(false);
+    expect(decide({ ...base, labels: ["lane: review"], reviews: [review("JesseLeone", "APPROVED")], record: reviewLane, files: core }).pass).toBe(true);
+    expect(decide({ ...base, labels: ["lane: review"], reviews: [review("jesseleone", "APPROVED", "old")], record: reviewLane, files: core }).pass).toBe(false);
   });
 
   it("uses the engineer's latest decision", () => {
     const reviews = [review("jesseleone", "APPROVED", "head", "2026-10-30T10:00:00Z"), review("jesseleone", "CHANGES_REQUESTED", "head", "2026-10-30T11:00:00Z")];
-    expect(decide({ labels: ["lane: review"], reviews, headSha: "head", engineers: who.engineers }).pass).toBe(false);
+    expect(decide({ ...base, labels: ["lane: review"], reviews, record: reviewLane, files: core }).pass).toBe(false);
   });
 
   it("fails safe before the lane is known", () => {
-    expect(decide({ labels: [], reviews: [], headSha: "head", engineers: who.engineers }).pass).toBe(false);
+    expect(decide({ ...base, labels: [], reviews: [], record: null, files: ext }).pass).toBe(false);
+  });
+
+  it("doesn't trust a green decision made for an earlier commit (a core change pushed after approval)", () => {
+    const stale = { sha: "older", lane: "green" as const };
+    const r = decide({ ...base, labels: ["lane: green"], reviews: [review("jesse-leone", "APPROVED")], record: stale, files: [...ext, ...core] });
+    expect(r.pass).toBe(false);
+    expect(r.message).toMatch(/latest version/);
+  });
+
+  it("doesn't trust a hand-added green label when the files say review", () => {
+    expect(decide({ ...base, labels: ["lane: green"], reviews: [], record: green, files: core }).pass).toBe(false);
   });
 });
 
 describe("lane comment", () => {
+  it("records which commit the lane was decided for", () => {
+    expect(parseLaneRecord(`text\n${laneRecord("abc1234def", "green")}`)).toEqual({ sha: "abc1234def", lane: "green" });
+    expect(parseLaneRecord("no record")).toBeNull();
+  });
+
+
   it("explains the review lane in plain English, with check results", () => {
     const result = classifyLane({ files: ["lib/selectors.ts"], checksPassed: true, aiVerdict: "none", requireAiVerdict: true });
     const text = renderLaneComment(result, parseChecks("typecheck=success,lint=success,test=success,build=success"), "none", who);

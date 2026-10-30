@@ -81,6 +81,21 @@ export function runAction(name: ActionName, args: unknown[], actorId: string, p?
   return runWithDB(actorId, () => fn(...args), p);
 }
 
+/**
+ * What one signed-in person may see: everything except other people's chats
+ * (chat threads are personal; only their owner can read, continue, rename or
+ * delete them).
+ */
+export function viewFor(db: DB, userId: string): DB {
+  const mine = new Set(db.chatThreads.filter((t) => t.ownerId === userId).map((t) => t.id));
+  return { ...db, chatThreads: db.chatThreads.filter((t) => mine.has(t.id)), chatMessages: db.chatMessages.filter((m) => mine.has(m.threadId)) };
+}
+
+/** The database as the browser of `userId` receives it. */
+export async function readDBFor(userId: string): Promise<DB> {
+  return viewFor(await readDB(), userId);
+}
+
 /** A read-only snapshot of the database. */
 export async function readDB(client?: Client): Promise<DB> {
   if (client) return loadDB(client);

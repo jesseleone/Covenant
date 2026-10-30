@@ -62,3 +62,8 @@ Implementation choices not fixed by the brief. One line each: choice — reason.
 - The preview link uses GitHub's documented `https://codespaces.new/OWNER/REPO/tree/BRANCH?quickstart=1`, from the PR's head repository.
 - Weekly metrics: "time to first safe deployment" runs from a citizen's first PR opened to their first merge (workspace first use isn't observable); first-pass rate checks the four check jobs on each PR's first commit (last 90 days); reverts are merged PRs titled "Revert…"; engineers and bots are excluded from per-citizen figures.
 - `.github/approvers.json` mirrors CODEOWNERS for the scripts (engineers vs business approvers) — CODEOWNERS can't express roles.
+- (After the AI review of the go-live PR) Each browser receives only its own chat threads and messages (`viewFor`), on every response that carries the database — chats are personal.
+- (Same) "Reset demo data" is allowed when `NODE_ENV` isn't production, or with `COVENANT_ALLOW_RESET=1`; `=0` refuses it anywhere; each reset writes a `demo.reset` audit row after reseeding — keeps the demo feature without making it a production footgun.
+- (Same) Persona sign-in stays (locked decision): documented as demo-only in README, runbook and architecture rather than building SSO.
+- (Same) `engineer-approval` counts a PR as green only if the lane comment's hidden record names the latest head commit, the label is green and the changed files classify green; `pause-auto-merge` turns auto-merge off at the start of every push — closes the stale-label race.
+- (Same) The AI review's verdict is posted by the base branch's script (checked out to `.base` after the review runs).

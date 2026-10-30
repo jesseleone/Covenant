@@ -2,7 +2,7 @@
 // comment (updated, never duplicated), and switch automatic merging on (green)
 // or off (review).
 //
-// Env: PR_NUMBER, CHECK_RESULTS ("typecheck=success,lint=failure,…"),
+// Env: PR_NUMBER, HEAD_SHA, CHECK_RESULTS ("typecheck=success,lint=failure,…"),
 //      AI_VERDICT ("none" | "minor" | "serious" | ""), GH_TOKEN.
 
 import { readFileSync } from "node:fs";
@@ -11,6 +11,13 @@ import { changedFiles, gh, prNumber, setOutput, summary, upsertComment } from ".
 
 export const LANE_MARKER = "<!-- covenant:lane -->";
 export const LABELS = { green: "lane: green", review: "lane: review" } as const;
+
+/** Hidden record of which commit the lane was decided for (read by engineer-approval). */
+export const laneRecord = (sha: string, lane: string) => `<!-- covenant:lane-head:${sha}:${lane} -->`;
+export function parseLaneRecord(body: string): { sha: string; lane: "green" | "review" } | null {
+  const m = /<!-- covenant:lane-head:([0-9a-f]{7,40}):(green|review) -->/.exec(body);
+  return m ? { sha: m[1], lane: m[2] as "green" | "review" } : null;
+}
 
 type Approvers = { engineers: string[]; businessApprovers: string[] };
 const approvers = (): Approvers => JSON.parse(readFileSync(".github/approvers.json", "utf8"));
@@ -75,7 +82,7 @@ if (process.argv[1]?.endsWith("classify-pr.ts")) {
   }
 
   const body = renderLaneComment(result, checks, verdict, approvers(), note);
-  upsertComment(pr, LANE_MARKER, body);
+  upsertComment(pr, LANE_MARKER, `${body}\n${laneRecord(process.env.HEAD_SHA ?? "", result.lane)}`);
   summary(body);
   setOutput("lane", result.lane);
   console.log(`Lane: ${result.lane}\n${result.reasons.join("\n")}`);

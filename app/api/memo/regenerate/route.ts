@@ -2,7 +2,7 @@
 // returns the result with the updated database.
 
 import { regenerateMemo } from "@/lib/server/ai";
-import { readDB } from "@/lib/server/run";
+import { readDBFor } from "@/lib/server/run";
 import { currentUserId, unauthorized } from "@/lib/server/session";
 
 export async function POST(req: Request) {
@@ -14,5 +14,5 @@ export async function POST(req: Request) {
     return Response.json({ error: "bad_request", message: "Expected { sectionIds: string[] }." }, { status: 400 });
   }
   const r = await regenerateMemo(actorId, ids);
-  return Response.json({ ...r, db: await readDB() });
+  return Response.json({ ...r, db: await readDBFor(actorId) });
 }
