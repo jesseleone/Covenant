@@ -149,7 +149,10 @@ jobs:
       contents: write        # enable automatic merging
       pull-requests: write   # labels, comments
       issues: write
-      checks: write          # publish the lane decision as a check run
+    outputs:
+      # Read by engineer-approval below, in this same run: nothing outside the
+      # run (labels, comments, other workflows) can change it.
+      lane: ${{ steps.decide.outputs.lane }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -159,6 +162,7 @@ jobs:
         with: { node-version: 22, cache: npm }
       - run: npm ci
       - name: Decide the lane
+        id: decide
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -174,7 +178,6 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
-      checks: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -186,4 +189,5 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          LANE: ${{ needs.lane.outputs.lane }}
         run: npx tsx scripts/ci/engineer-approval.ts

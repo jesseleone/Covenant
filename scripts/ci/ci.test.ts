@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { classifyLane } from "./lane";
-import { decide, pickDecision } from "./engineer-approval";
+import { decide } from "./engineer-approval";
 import { parseChecks, renderLaneComment } from "./classify-pr";
 import { parseReview, renderReview, reviewCost } from "./post-ai-review";
 
@@ -8,52 +8,32 @@ const who = { engineers: ["jesseleone"], businessApprovers: ["jesse-leone"] };
 const review = (login: string, state: string, commit_id = "head", submitted_at = "2026-10-30T10:00:00Z") => ({ user: { login }, state, commit_id, submitted_at });
 
 describe("engineer-approval check", () => {
-  const ext = ["extensions/a/index.tsx"];
-  const core = ["lib/selectors.ts"];
-  const green = { sha: "head", lane: "green" as const };
-  const reviewLane = { sha: "head", lane: "review" as const };
   const base = { headSha: "head", engineers: who.engineers };
 
   it("passes green-lane changes without an engineer", () => {
-    expect(decide({ ...base, labels: ["lane: green"], reviews: [], record: green, files: ext }).pass).toBe(true);
+    expect(decide({ ...base, lane: "green", reviews: [] }).pass).toBe(true);
   });
 
   it("waits for an engineer on review-lane changes; a business approval isn't enough", () => {
-    const r = decide({ ...base, labels: ["lane: review"], reviews: [review("jesse-leone", "APPROVED")], record: reviewLane, files: core });
+    const r = decide({ ...base, lane: "review", reviews: [review("jesse-leone", "APPROVED")] });
     expect(r).toEqual({ pass: false, message: "Review lane: waiting for an engineer (@jesseleone) to approve the latest version." });
   });
 
   it("passes once an engineer approves the latest commit, not an older one", () => {
-    expect(decide({ ...base, labels: ["lane: review"], reviews: [review("JesseLeone", "APPROVED")], record: reviewLane, files: core }).pass).toBe(true);
-    expect(decide({ ...base, labels: ["lane: review"], reviews: [review("jesseleone", "APPROVED", "old")], record: reviewLane, files: core }).pass).toBe(false);
+    expect(decide({ ...base, lane: "review", reviews: [review("JesseLeone", "APPROVED")] }).pass).toBe(true);
+    expect(decide({ ...base, lane: "review", reviews: [review("jesseleone", "APPROVED", "old")] }).pass).toBe(false);
   });
 
   it("uses the engineer's latest decision", () => {
     const reviews = [review("jesseleone", "APPROVED", "head", "2026-10-30T10:00:00Z"), review("jesseleone", "CHANGES_REQUESTED", "head", "2026-10-30T11:00:00Z")];
-    expect(decide({ ...base, labels: ["lane: review"], reviews, record: reviewLane, files: core }).pass).toBe(false);
+    expect(decide({ ...base, lane: "review", reviews }).pass).toBe(false);
   });
 
-  it("fails safe before the lane is known", () => {
-    expect(decide({ ...base, labels: [], reviews: [], record: null, files: ext }).pass).toBe(false);
-  });
-
-  it("doesn't trust a green decision made for an earlier commit (a core change pushed after approval)", () => {
-    const stale = { sha: "older", lane: "green" as const };
-    const r = decide({ ...base, labels: ["lane: green"], reviews: [review("jesse-leone", "APPROVED")], record: stale, files: [...ext, ...core] });
-    expect(r.pass).toBe(false);
-    expect(r.message).toMatch(/latest version/);
-  });
-
-  it("only trusts lane decisions published by GitHub Actions for this commit", () => {
-    const run = (title: string, slug: string, sha = "head", completed_at = "2026-10-30T10:00:00Z") => ({ name: "lane-decision", head_sha: sha, completed_at, app: { slug }, output: { title } });
-    expect(pickDecision([run("green", "github-actions")], "head")).toEqual({ sha: "head", lane: "green" });
-    expect(pickDecision([run("green", "someones-app")], "head")).toBeNull();
-    expect(pickDecision([run("green", "github-actions", "older")], "head")).toBeNull();
-    expect(pickDecision([run("green", "github-actions", "head", "2026-10-30T10:00:00Z"), run("review", "github-actions", "head", "2026-10-30T11:00:00Z")], "head")).toEqual({ sha: "head", lane: "review" });
-  });
-
-  it("doesn't trust a hand-added green label when the files say review", () => {
-    expect(decide({ ...base, labels: ["lane: green"], reviews: [], record: green, files: core }).pass).toBe(false);
+  it("treats an undecided lane as review: blocked until an engineer approves, then unblocked", () => {
+    expect(decide({ ...base, lane: "", reviews: [] }).pass).toBe(false);
+    const r = decide({ ...base, lane: "", reviews: [review("jesseleone", "APPROVED")] });
+    expect(r.pass).toBe(true);
+    expect(r.message).toMatch(/couldn't be decided/);
   });
 });
 

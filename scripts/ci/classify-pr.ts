@@ -7,25 +7,10 @@
 
 import { readFileSync } from "node:fs";
 import { classifyLane, type AiVerdict, type LaneResult } from "./lane";
-import { changedFiles, gh, prNumber, repo, setOutput, summary, upsertComment } from "./github";
+import { changedFiles, gh, prNumber, setOutput, summary, upsertComment } from "./github";
 
 export const LANE_MARKER = "<!-- covenant:lane -->";
 export const LABELS = { green: "lane: green", review: "lane: review" } as const;
-
-/**
- * The lane decision is published as a check run named "lane-decision" on the
- * commit it was decided for (title "green" or "review"). Only GitHub Apps,
- * such as GitHub Actions, can create check runs, so people can't forge one;
- * engineer-approval reads it from there.
- */
-export const DECISION_CHECK = "lane-decision";
-
-function publishDecision(sha: string, lane: "green" | "review", reasons: string[]) {
-  gh(["api", "-X", "POST", `repos/${repo()}/check-runs`, "--input", "-"], JSON.stringify({
-    name: DECISION_CHECK, head_sha: sha, status: "completed", conclusion: lane === "green" ? "success" : "neutral",
-    output: { title: lane, summary: reasons.join("\n") },
-  }));
-}
 
 type Approvers = { engineers: string[]; businessApprovers: string[] };
 const approvers = (): Approvers => JSON.parse(readFileSync(".github/approvers.json", "utf8"));
@@ -79,23 +64,29 @@ if (process.argv[1]?.endsWith("classify-pr.ts")) {
     requireAiVerdict: true,
   });
 
-  ensureLabels();
-  const add = LABELS[result.lane], remove = LABELS[result.lane === "green" ? "review" : "green"];
-  gh(["pr", "edit", String(pr), "--add-label", add, "--remove-label", remove]);
+  // The lane goes to engineer-approval as this job's output (same workflow run),
+  // so it's set before anything that could fail.
+  setOutput("lane", result.lane);
+  const attempt = (what: string, fn: () => void) => {
+    try { fn(); return true; } catch (e) { console.warn(`Couldn't ${what}: ${e instanceof Error ? e.message : e}`); return false; }
+  };
 
+  attempt("set the lane label", () => {
+    ensureLabels();
+    const add = LABELS[result.lane], remove = LABELS[result.lane === "green" ? "review" : "green"];
+    gh(["pr", "edit", String(pr), "--add-label", add, "--remove-label", remove]);
+  });
+
+  // Automatic merging last, and pinned to the commit that was judged.
   let note: string | undefined;
-  try {
-    // Pinned to the commit that was judged: a newer push can't inherit it.
+  const merged = attempt("update automatic merging", () => {
     if (result.lane === "green") gh(["pr", "merge", String(pr), "--auto", "--squash", "--match-head-commit", headSha]);
     else gh(["pr", "merge", String(pr), "--disable-auto"]);
-  } catch {
-    if (result.lane === "green") note = "_Automatic merging isn't switched on for this project yet, so after approval someone needs to press **Merge**._";
-  }
+  });
+  if (!merged && result.lane === "green") note = "_Automatic merging isn't switched on for this project yet, so after approval someone needs to press **Merge**._";
 
   const body = renderLaneComment(result, checks, verdict, approvers(), note);
-  publishDecision(headSha, result.lane, result.reasons);
-  upsertComment(pr, LANE_MARKER, body);
+  attempt("post the lane comment", () => upsertComment(pr, LANE_MARKER, body));
   summary(body);
-  setOutput("lane", result.lane);
   console.log(`Lane: ${result.lane}\n${result.reasons.join("\n")}`);
 }

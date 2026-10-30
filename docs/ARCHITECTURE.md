@@ -80,7 +80,7 @@ flowchart LR
   LANE -->|green| AM[auto-merge on]
   LANE -->|review| NM[auto-merge off]
   LANE --> EA[engineer-approval]
-  REV[review submitted] --> EA2[engineer-approval.yml] 
+  REV[engineer approves] --> EA2[engineer-approval.yml<br/>re-runs the check]
   PR --> P[preview: Codespaces link + screenshots]
 ```
 
@@ -89,13 +89,13 @@ flowchart LR
 | typecheck, lint, test, build | `.github/workflows/pr.yml` | Yes (required) |
 | ai-review | `pr.yml` → `scripts/ci/post-ai-review.ts` | Required to finish; its verdict feeds the lane |
 | lane | `pr.yml` → `scripts/ci/classify-pr.ts` (rules in `scripts/ci/lane.ts`) | Required to finish |
-| engineer-approval | `pr.yml` and `engineer-approval.yml` → `scripts/ci/engineer-approval.ts` | Yes: passes for green; for review, only after an engineer approves the latest commit |
+| engineer-approval | `pr.yml` → `scripts/ci/engineer-approval.ts`, re-run on approval by `engineer-approval.yml` | Yes: passes for green; for review (or an undecided lane), only after an engineer approves the latest commit |
 | preview | `.github/workflows/preview.yml` | No |
 | metrics | `.github/workflows/metrics.yml` (weekly) | No |
 
 **Who approves:** `.github/CODEOWNERS` (`*` engineers, `/extensions/` business approvers) with branch protection "require code owner review". `.github/approvers.json` mirrors it for the scripts.
 
-**Trust boundaries.** The lane and engineer-approval jobs, and the step that posts the AI review's verdict, run code from the *base* branch, so a pull request can't change the rules that judge it. Each push switches auto-merge off first (`pause-auto-merge`), and auto-merge is only ever switched on for the exact commit that was judged. The lane job publishes its decision as a `lane-decision` check run on that commit; only GitHub Apps can create check runs, so people can't forge one, and comments are never trusted. `engineer-approval` counts a PR as green only if GitHub Actions' decision for the latest commit is green, the label says green and the changed files still classify as green. Edits to `.github/`, `scripts/` or the harness always land in the review lane and need an engineer as code owner. The AI reviewer has read-only tools and treats the diff as data. Pull requests from forks get no secrets, so the AI review doesn't run and they fall into the review lane.
+**Trust boundaries.** The lane and engineer-approval jobs, and the step that posts the AI review's verdict, run code from the *base* branch, so a pull request can't change the rules that judge it. Each push switches auto-merge off first (`pause-auto-merge`), and auto-merge is only ever switched on for the exact commit that was judged. `engineer-approval` takes the lane from the lane job's output in the *same workflow run*, never from labels, comments or check runs, which any collaborator's own workflow could write; an undecided lane counts as review. When an engineer approves, `engineer-approval.yml` only asks GitHub to re-run that check in the pull request's own run, so it can't make anything pass. Changing the workflows themselves needs an engineer's code-owner review (CODEOWNERS is read from the base branch). Keep *Allow GitHub Actions to create and approve pull requests* switched off. Edits to `.github/`, `scripts/` or the harness always land in the review lane and need an engineer as code owner. The AI reviewer has read-only tools and treats the diff as data. Pull requests from forks get no secrets, so the AI review doesn't run and they fall into the review lane.
 
 ## 5. Where each rule is enforced
 
