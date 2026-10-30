@@ -6,6 +6,20 @@ An underwriting workspace for a private credit deal team: deals, companies and p
 
 The system explanation is in [`docs/SYSTEM.md`](docs/SYSTEM.md); the Postgres version of the data model is [`docs/schema.sql`](docs/schema.sql).
 
+## Build something: quickstart for the deal team
+
+You can add your own screens to Covenant (a new page in the left menu, or a new tab on every deal) by describing what you want to Claude. You don't need to install anything or know how to code.
+
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/jesseleone/Covenant?quickstart=1)
+
+1. **Open your workspace.** Click **Open in GitHub Codespaces** above and sign in to GitHub. The first time takes a few minutes; after that it reopens where you left off.
+2. **See the app.** When the workspace is ready, Covenant opens in a new browser tab called **Covenant preview**, with demo data. Sign in as any persona.
+3. **Start Claude.** In the terminal at the bottom of the workspace, type `claude` and press Enter. Sign in with your company Claude account.
+4. **Describe what you want.** For example: *"I'd like a new tab on each deal that summarises it on one page."* Claude asks a few questions, writes a short plan for you to confirm, builds it, tests it, and shows you a preview.
+5. **Send it for approval.** Say *"ship it"*. Claude checks everything and sends your change for approval. Small, self-contained changes need one approval from a business approver; anything touching the core of the app goes to an engineer.
+
+Prefer to work on your own computer? Run [`scripts/setup-mac.sh`](scripts/setup-mac.sh) (Mac) or [`scripts/setup-windows.ps1`](scripts/setup-windows.ps1) (Windows). They install what's needed and open the same workspace in VS Code.
+
 ## Overview
 
 Covenant takes a deal from a new CIM to an IC-approved, locked set of terms. Deals, companies and people share one navigation, and each deal page holds the underwriting work in tabs ordered by the deal lifecycle.
@@ -27,7 +41,7 @@ Four personas (Analyst, VP, MD, IC member) have different permissions, and every
 
 ## Run it
 
-Requires Node 20+ and Docker (for Postgres).
+The easiest way is the dev container (Codespaces, or VS Code + Dev Containers): it installs everything, loads the demo data and starts the app. To run it directly instead, you need Node 20+ and Docker (for Postgres):
 
 ```bash
 npm install

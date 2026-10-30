@@ -1,0 +1,51 @@
+{
+  // The Covenant workspace. One definition, two ways in:
+  //   - GitHub Codespaces ("Open in GitHub Codespaces" in the README)
+  //   - VS Code + Dev Containers on a laptop (scripts/setup-mac.sh, scripts/setup-windows.ps1)
+  // On first start it installs packages, creates the database and loads the
+  // demo data; every start it runs the app and opens "Covenant preview".
+  "name": "Covenant",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspaces/Covenant",
+  "shutdownAction": "stopCompose",
+
+  "features": {
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/anthropics/devcontainer-features/claude-code:1.0": {}
+  },
+
+  // Keep within the free Codespaces allowance: 2 cores is enough.
+  "hostRequirements": { "cpus": 2 },
+
+  "postCreateCommand": "bash .devcontainer/on-create.sh",
+  "postStartCommand": "bash .devcontainer/start-preview.sh",
+
+  "forwardPorts": [3000],
+  "portsAttributes": {
+    "3000": { "label": "Covenant preview", "onAutoForward": "openBrowser" }
+  },
+
+  // Optional: with a key, chat and memo regeneration use live AI; without
+  // one they run in offline mode. (Claude Code itself signs in separately.)
+  "secrets": {
+    "ANTHROPIC_API_KEY": {
+      "description": "Optional. An Anthropic API key for the app's live AI features. Leave empty to use offline mode."
+    }
+  },
+
+  "customizations": {
+    "codespaces": {
+      "openFiles": ["README.md"]
+    },
+    "vscode": {
+      "extensions": [
+        "anthropic.claude-code",
+        "dbaeumer.vscode-eslint",
+        "bradlc.vscode-tailwindcss"
+      ]
+    }
+  },
+
+  "remoteUser": "node"
+}

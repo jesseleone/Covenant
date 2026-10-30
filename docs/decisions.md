@@ -34,3 +34,11 @@ Implementation choices not fixed by the brief. One line each: choice — reason.
 - The catalog flags extensions not updated in 90 days (`STALE_AFTER_DAYS`) — a prompt to review or retire them, not an automatic removal.
 - Extension tests run in jsdom (a vitest project for `extensions/**`), core tests stay in Node; `renderExtension` loads the demo data and records writes instead of sending them.
 - A `BarChart` (single series, one hue, table semantics, hover/focus tooltip) is part of the SDK — the reference extension needed it and citizens will reuse it.
+- The dev container uses Microsoft's `typescript-node:22` image plus the GitHub CLI and Claude Code features — maintained images, nothing custom to build.
+- `node_modules` and `.next` are container volumes — opening an existing laptop copy in the container never overwrites the laptop's own packages (they differ between macOS/Windows and Linux).
+- The test database (`covenant_test`) is created by a Postgres init script in the dev container — tests never touch the demo data.
+- The app starts from `.devcontainer/start-preview.sh` (background, logs to /tmp/covenant-dev.log); it is idempotent so the preview skill can call it too.
+- Codespaces is limited to 2 cores (`hostRequirements`) — stretches the free monthly allowance; 2 cores run the app and Postgres comfortably.
+- `ANTHROPIC_API_KEY` is a recommended Codespaces secret, optional — without it the app's chat runs offline; Claude Code signs in separately with the person's company account.
+- The README button opens the default branch with `?quickstart=1`, so returning users resume their existing codespace instead of creating another.
+- Setup scripts clone into `~/Covenant` and open it with VS Code's `--folder-uri vscode-remote://dev-container+<hex path>`; without VS Code the Mac script falls back to the devcontainer CLI. The Windows script is untested.
