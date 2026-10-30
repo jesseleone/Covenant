@@ -1,0 +1,8 @@
+{
+  "name": "Upcoming ICs",
+  "description": "Active deals with an IC meeting coming up: date, deal, stage, deal lead and facility size, soonest first.",
+  "placement": "nav",
+  "owner": { "github": "jesseleone", "name": "Jesse" },
+  "createdAt": "2026-10-29",
+  "updatedAt": "2026-10-29"
+}
