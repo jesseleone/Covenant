@@ -1,0 +1,8 @@
+{
+  "name": "Sector exposure",
+  "description": "How much the fund holds, or is working on, in each sector, and where it is concentrated.",
+  "placement": "nav",
+  "owner": { "github": "jesseleone", "name": "Jesse Leone" },
+  "createdAt": "2026-10-29",
+  "updatedAt": "2026-10-29"
+}

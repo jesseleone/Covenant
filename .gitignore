@@ -50,3 +50,6 @@ next-env.d.ts
 
 # bundled database script (Dockerfile)
 /dist/
+
+# generated from extensions/*/manifest.json (scripts/gen-extensions.ts)
+/lib/extensions/registry.generated.ts

@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Building2, ChevronDown, ClipboardCheck, Gavel, Inbox, Kanban, MessageSquare, PanelLeftClose, PanelLeftOpen, Plus, Users } from "lucide-react";
+import { Blocks, Building2, ChevronDown, ClipboardCheck, Gavel, Inbox, Kanban, MessageSquare, PanelLeftClose, PanelLeftOpen, Plus, Puzzle, Users } from "lucide-react";
+import { navExtensions } from "@/lib/extensions";
 import { openNew } from "@/lib/ui";
 import { Monogram } from "@/components/providers";
 import { cn } from "@/components/ui/primitives";
@@ -23,6 +24,11 @@ const LATER = [
 
 export function LeftNav({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
   const pathname = usePathname();
+  // Pages added by extensions (extensions/*, placement "nav"), then the catalog.
+  const extensionLinks = [
+    ...navExtensions().map((e) => ({ href: `/x/${e.slug}`, label: e.manifest.name, icon: Puzzle })),
+    { href: "/extensions", label: "All extensions", icon: Blocks },
+  ];
 
   return (
     <aside className={cn("flex h-full shrink-0 flex-col border-r border-border bg-sidebar transition-[width] duration-150", collapsed ? "w-16" : "w-[260px]")}>
@@ -56,26 +62,14 @@ export function LeftNav({ collapsed, onToggle }: { collapsed: boolean; onToggle:
       </div>
 
       <nav className="flex flex-col gap-0.5 px-3 pt-1" aria-label="Primary">
-        {NAV.map(({ href, label, icon: Icon }) => {
-          const active = pathname === href || pathname.startsWith(`${href}/`);
-          const link = (
-            <Link
-              key={href}
-              href={href}
-              aria-current={active ? "page" : undefined}
-              className={cn(
-                "relative flex h-9 items-center gap-2.5 rounded-[8px] text-[14px] transition-colors",
-                collapsed ? "justify-center" : "px-3",
-                active ? "bg-surface-2 font-medium text-text" : "text-text-2 hover:bg-surface-2/70 hover:text-text",
-              )}
-            >
-              {active && <span className="absolute top-2 bottom-2 left-0 w-[2px] rounded-full bg-accent" />}
-              <Icon size={17} strokeWidth={1.75} />
-              {!collapsed && label}
-            </Link>
-          );
-          return collapsed ? <Tip key={href} content={label}>{link}</Tip> : link;
-        })}
+        {NAV.map((item) => <NavLink key={item.href} {...item} pathname={pathname} collapsed={collapsed} />)}
+      </nav>
+
+      <div className="mx-5 my-3 h-px bg-border" />
+
+      <nav className="flex flex-col gap-0.5 px-3" aria-label="Extensions">
+        {!collapsed && <div className="px-3 pb-1 text-[11px] font-medium tracking-wide text-text-3 uppercase">Extensions</div>}
+        {extensionLinks.map((item) => <NavLink key={item.href} {...item} pathname={pathname} collapsed={collapsed} />)}
       </nav>
 
       <div className="mx-5 my-3 h-px bg-border" />
@@ -105,4 +99,24 @@ export function LeftNav({ collapsed, onToggle }: { collapsed: boolean; onToggle:
       </div>
     </aside>
   );
+}
+
+function NavLink({ href, label, icon: Icon, pathname, collapsed }: { href: string; label: string; icon: typeof Kanban; pathname: string; collapsed: boolean }) {
+  const active = pathname === href || pathname.startsWith(`${href}/`);
+  const link = (
+    <Link
+      href={href}
+      aria-current={active ? "page" : undefined}
+      className={cn(
+        "relative flex h-9 items-center gap-2.5 rounded-[8px] text-[14px] transition-colors",
+        collapsed ? "justify-center" : "px-3",
+        active ? "bg-surface-2 font-medium text-text" : "text-text-2 hover:bg-surface-2/70 hover:text-text",
+      )}
+    >
+      {active && <span className="absolute top-2 bottom-2 left-0 w-[2px] rounded-full bg-accent" />}
+      <Icon size={17} strokeWidth={1.75} />
+      {!collapsed && <span className="truncate">{label}</span>}
+    </Link>
+  );
+  return collapsed ? <Tip content={label}>{link}</Tip> : link;
 }
