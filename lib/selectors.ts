@@ -75,6 +75,7 @@ export function leadTranche(db: DB, termSetId?: string): Tranche | undefined {
 // ---------------------------------------------------------------------------
 
 /** Σ funded-at-close debt ÷ LTM adjusted EBITDA. */
+// Demo (pipeline test): a change to a calculation always goes to an engineer.
 export function totalLeverage(db: DB, dealId: string, termSetId?: string): number | null {
   const ebitda = numField(db, dealId, "adj_ebitda_ltm");
   const tsId = resolveTermSetId(db, dealId, termSetId);
