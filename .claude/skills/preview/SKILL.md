@@ -9,7 +9,7 @@ description: Make sure the Covenant app is running and give the person a link to
    ```bash
    bash .devcontainer/start-preview.sh
    ```
-   It prints "✓ Covenant preview is running on port 3000" when ready. If it fails, show the last lines of `/tmp/covenant-dev.log` and explain the problem simply.
+   It prints "✓ Covenant preview is running on port 3000" when ready. If it fails, show the last lines of `/tmp/covenant-dev.log` and explain the problem simply. If the preview shows an error page (for example "502"), restart it with `bash .devcontainer/start-preview.sh --restart`.
 
 2. Work out the address:
    - In GitHub Codespaces (the variable `CODESPACE_NAME` is set): `https://$CODESPACE_NAME-3000.$GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN`. Get the values with `echo $CODESPACE_NAME $GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN`.
