@@ -41,4 +41,12 @@ Implementation choices not fixed by the brief. One line each: choice — reason.
 - Codespaces is limited to 2 cores (`hostRequirements`) — stretches the free monthly allowance; 2 cores run the app and Postgres comfortably.
 - `ANTHROPIC_API_KEY` is a recommended Codespaces secret, optional — without it the app's chat runs offline; Claude Code signs in separately with the person's company account.
 - The README button opens the default branch with `?quickstart=1`, so returning users resume their existing codespace instead of creating another.
+- Engineer mode is `COVENANT_ENGINEER=1`, set either in the shell before `claude` or in the gitignored `.claude/settings.local.json` under `env` — per person, never committed.
 - Setup scripts clone into `~/Covenant` and open it with VS Code's `--folder-uri vscode-remote://dev-container+<hex path>`; without VS Code the Mac script falls back to the devcontainer CLI. The Windows script is untested.
+- The guard hook (`.claude/hooks/guard-paths.mjs`) also allows Claude Code's own folder (`~/.claude`) and temp directories — plans, memory and the approval-request draft aren't part of the app.
+- `MultiEdit` stays in the hook matcher although current Claude Code no longer has that tool — harmless, and covers older versions.
+- `.claude/settings.json` sets `"model": "opus"` (the alias, so it follows the current Opus) and allows only the commands the skills use; everything else prompts. Deny rules cover `.env` files, keys, force-pushes, pushing to main, merging, secrets, `rm -rf` and installing packages.
+- The lane rules live in one pure module (`scripts/ci/lane.ts`) with plain-English reasons per area of the code; ship-it uses it to predict the lane and CI will use it to decide.
+- The cost estimate reads the most recently active transcript in `~/.claude/projects/<project>/` (plus its subagent transcripts), counts each API message once, and prices it with a table in `scripts/claude/session.ts`; unknown models or an unreadable transcript give "Estimated cost: unavailable".
+- "Directed by" comes from the GitHub account signed in to `gh` (name and login), falling back to git's user name.
+- Ship-it names drafts `ext/<name>-<YYYYMMDD>` and always targets `main`; the PR template is plain English and doubles as ship-it's outline.
