@@ -1,8 +1,7 @@
-"use client";
-
-// Domain actions: the only way the UI changes data. Each goes through
+// Domain actions: the only way the app changes data. Each goes through
 // `commit`, which checks the role's permission, applies the change to a copy
-// of the DB and appends AuditEvents.
+// of the DB and appends AuditEvents. They run on the server (lib/server/run.ts);
+// the browser calls them by name through lib/client/actions.ts.
 
 import { nextThursday, parseISO, format } from "date-fns";
 import { NOTE_LABELS, PASS_REASON_LABELS, STAGE_LABELS, type AuditEvent, type Company, type Covenant, type DB, type Deal, type Person, type Stakeholder, type DDItem, type ICCondition, type ICEvent, type MemoSection, type Note, type PassReason, type Stage, type Tranche } from "@/lib/schema";
@@ -12,7 +11,7 @@ import { canMoveStage } from "@/lib/permissions";
 import { activeTermSet, computeSnapshot, sectionIsStale } from "@/lib/selectors";
 import { offlineSection } from "@/lib/memo";
 import { SAMPLE_CIM, SAMPLE_CIM_FIELDS } from "@/lib/seed/sample-cim";
-import { commit, newId, nowIso, type ActionResult } from "@/lib/store";
+import { commit, newId, nowIso, type ActionResult } from "@/lib/core/commit";
 
 const fail = (error: string): ActionResult => ({ ok: false, error });
 

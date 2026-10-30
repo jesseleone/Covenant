@@ -5,13 +5,11 @@ import { ArrowUp, AtSign, Building2, Check, ChevronDown, Copy, Kanban, Loader2, 
 import { toast } from "sonner";
 import { create } from "zustand";
 import type { ChatMessage, DB } from "@/lib/schema";
-import { addChatMessage, createThread, type Scope } from "@/lib/chat";
-import { addNote } from "@/lib/actions";
-import { useCurrentUser, useDB, useDBStore } from "@/lib/store";
-import { LiveUnavailable, getLiveStatus, runAgent } from "@/lib/llm/agent";
-import { answerOffline } from "@/lib/llm/offline";
-import { chatSystemPrompt } from "@/lib/llm/prompts";
+import { scopeName, type Scope } from "@/lib/chat";
+import { addNote, getLiveStatus } from "@/lib/client/actions";
+import { refreshDB, useCurrentUser, useDB } from "@/lib/store";
 import { renderMarkdown } from "@/lib/render/tokens";
+import type { ChatEvent } from "@/lib/server/ai";
 import { Chip, cn } from "@/components/ui/primitives";
 import { RichText } from "@/components/common/rich-text";
 import { MentionPicker } from "@/components/common/mention-picker";
@@ -39,12 +37,6 @@ const setPending = (id: string, v: { steps: string[]; live: boolean } | null) =>
   });
 const pushStep = (id: string, step: string) =>
   usePending.setState((s) => (s.pending[id] ? { pending: { ...s.pending, [id]: { ...s.pending[id], steps: [...s.pending[id].steps, step] } } } : s));
-
-function scopeName(db: DB, s: Scope) {
-  if (s.type === "deal") return db.deals.find((d) => d.id === s.id)?.name ?? s.id;
-  if (s.type === "company") return db.companies.find((c) => c.id === s.id)?.name ?? s.id;
-  return db.people.find((p) => p.id === s.id)?.fullName ?? s.id;
-}
 
 /**
  * A conversation: messages, composer with @-mentions, and the live / offline
@@ -82,46 +74,47 @@ export function ChatConversation({
     const isLive = liveOverride ?? live;
     const prompt = text.trim();
     if (!prompt || busy || !user) return;
-    let id = threadId;
-    if (!id) {
-      const deal = scope.find((s) => s.type === "deal");
-      id = createThread(deal ? `${scopeName(db, deal).replace("Project ", "")}: ${prompt}` : prompt, scope);
-    }
-    const history = messages.map((m) => ({ role: m.role, content: m.content }));
-    const scopeNote = scope.length ? `\n\n(Scope: ${scope.map((s) => scopeName(db, s)).join(", ")})` : "";
-    addChatMessage(id, { role: "user", content: prompt });
+    const deal = scope.find((s) => s.type === "deal");
+    const title = deal ? `${scopeName(db, deal).replace("Project ", "")}: ${prompt}` : prompt;
     setInput("");
-    setPending(id, { steps: [], live: !!isLive });
-    if (!threadId) onThreadCreated?.(id);
 
-    const offline = async (reason?: string) => {
-      const a = answerOffline(useDBStore.getState().db, prompt, scope);
-      for (const c of a.toolCalls) { pushStep(id!, c.name); await new Promise((r) => setTimeout(r, 140)); }
-      addChatMessage(id!, { role: "assistant", content: a.text, toolCalls: a.toolCalls, mode: "offline" });
-      if (reason) toast(`Answered offline`, { description: reason });
-    };
-
+    // The server creates the thread (if new), saves the question, answers it
+    // live or offline, and streams progress as one JSON event per line.
+    let id = threadId;
     try {
-      if (isLive) {
-        try {
-          const r = await runAgent({
-            db: () => useDBStore.getState().db,
-            system: chatSystemPrompt(useDBStore.getState().db, user, scope),
-            history,
-            prompt: prompt + scopeNote,
-            onStep: (s) => pushStep(id!, s.name),
-          });
-          addChatMessage(id, { role: "assistant", content: r.text || "_No answer returned._", toolCalls: r.toolCalls, mode: "live" });
-        } catch (e) {
-          if (!(e instanceof LiveUnavailable)) throw e;
-          if (e.reason === "auth" || e.reason === "no_key") setLive(false);
-          await offline(e.reason === "auth" ? "The API key was rejected; using offline mode." : `Live AI unavailable (${e.message}).`);
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ threadId, title, prompt, scope, live: !!isLive }),
+      });
+      if (!res.ok || !res.body) throw new Error((await res.json().catch(() => null))?.message ?? `HTTP ${res.status}`);
+      const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+      let buffer = "";
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += value;
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines.filter(Boolean)) {
+          const e = JSON.parse(line) as ChatEvent;
+          if (e.type === "thread") {
+            id = e.id;
+            setPending(id, { steps: [], live: !!isLive });
+            await refreshDB();
+            if (!threadId) onThreadCreated?.(id);
+          } else if (e.type === "step" && id) pushStep(id, e.name);
+          else if (e.type === "fallback") {
+            if (e.disableLive) setLive(false);
+            toast("Answered offline", { description: e.message });
+          } else if (e.type === "error") toast.error(e.message);
         }
-      } else {
-        await offline();
       }
+    } catch (e) {
+      toast.error("The answer didn't arrive", { description: e instanceof Error ? e.message : undefined });
     } finally {
-      setPending(id, null);
+      await refreshDB();
+      if (id) setPending(id, null);
     }
   }
 
@@ -226,9 +219,9 @@ function MessageView({ db, m, scope }: { db: DB; m: ChatMessage; scope: Scope[] 
     return <div className="flex justify-end"><div className="max-w-[85%] rounded-[18px] bg-surface-2 px-4 py-2.5 whitespace-pre-wrap">{m.content}</div></div>;
   }
   const copy = async () => { try { await navigator.clipboard.writeText(renderMarkdown(db, undefined, m.content)); toast.success("Copied"); } catch { toast.error("Clipboard not available"); } };
-  const save = () => {
+  const save = async () => {
     if (!deal) return;
-    const r = addNote({ type: "deal", id: deal.id }, `**From chat:** ${renderMarkdown(db, undefined, m.content)}`, "general");
+    const r = await addNote({ type: "deal", id: deal.id }, `**From chat:** ${renderMarkdown(db, undefined, m.content)}`, "general");
     if (!r.ok) toast.error(r.error); else toast.success(`Saved to ${scopeName(db, deal)} notes`);
   };
   return (

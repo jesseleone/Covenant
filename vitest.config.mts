@@ -6,5 +6,7 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["lib/**/*.test.ts", "components/**/*.test.tsx"],
+    // Database tests (*.db.test.ts) share one test database, so files run one at a time.
+    fileParallelism: false,
   },
 });

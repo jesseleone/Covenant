@@ -5,9 +5,10 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { GitCompareArrows, Lock, Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { LIEN_RANKS, type Covenant, type DB, type Deal, type TermSet, type Tranche } from "@/lib/schema";
-import { createTermSetVersion, discardTermSetDraft, issueTermSet, saveTermSetDraft } from "@/lib/actions";
+import { createTermSetVersion, discardTermSetDraft, issueTermSet, saveTermSetDraft } from "@/lib/client/actions";
 import { can } from "@/lib/permissions";
-import { newId, useCurrentUser } from "@/lib/store";
+import { newId } from "@/lib/core/commit";
+import { useCurrentUser } from "@/lib/store";
 import { currentCovenantLevel, metricsAsOf, numField, termSetsFor, userById } from "@/lib/selectors";
 import { TRANCHE_FIELDS, covenantSchedule, diffTerms } from "@/lib/terms";
 import { fmtBps, fmtDate, fmtMonthYear, fmtPct, fmtSpread, fmtUsdM, fmtX, titleCase, termSetLabel } from "@/lib/format";
@@ -51,8 +52,8 @@ export function SecuritiesTab({ db, deal }: { db: DB; deal: Deal }) {
 
   const go = (v: number, extra = "") => router.replace(`${pathname}?v=${v}${extra}`, { scroll: false });
 
-  const onNewVersion = () => {
-    const r = createTermSetVersion(deal.id);
+  const onNewVersion = async () => {
+    const r = await createTermSetVersion(deal.id);
     if (!r.ok) return toast.error(r.error);
     toast.success(`Created v${latest.version + 1} as a draft`, { description: "Edit the terms, then save and issue." });
     setCompare(false);
@@ -120,21 +121,21 @@ function VersionView({ db, deal, ts, editable, latest }: { db: DB; deal: Deal; t
   const setLevels = (covId: string, levels: Covenant["levels"]) =>
     setDraft((d) => ({ ...d, covenants: d.covenants.map((c) => (c.id === covId ? { ...c, levels } : c)) }));
 
-  const save = () => {
-    const r = saveTermSetDraft(ts.id, draft.tranches, draft.covenants);
+  const save = async () => {
+    const r = await saveTermSetDraft(ts.id, draft.tranches, draft.covenants);
     if (!r.ok) { toast.error(r.error); return false; }
     toast.success(`Saved v${ts.version}`);
     return true;
   };
-  const issue = () => {
-    if (dirty && !save()) return;
-    const r = issueTermSet(ts.id);
+  const issue = async () => {
+    if (dirty && !(await save())) return;
+    const r = await issueTermSet(ts.id);
     if (!r.ok) return toast.error(r.error);
     toast.success(`Issued term set v${ts.version}`, { description: "It is now read-only. Create a new version to change it." });
     setConfirmIssue(false);
   };
-  const discard = () => {
-    const r = discardTermSetDraft(ts.id);
+  const discard = async () => {
+    const r = await discardTermSetDraft(ts.id);
     if (!r.ok) return toast.error(r.error);
     toast(`Discarded draft v${ts.version}`);
   };

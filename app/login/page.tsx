@@ -34,7 +34,7 @@ function Login() {
     const u = db.users.find((x) => x.email.toLowerCase() === email.trim().toLowerCase());
     if (!u) return setError("No account with that email. Try a demo persona below.");
     if (!password) return setError("Enter any password (this is a demo sign-in).");
-    signIn(u.id);
+    signIn(u.id).catch((err: Error) => setError(err.message));
   };
 
   return (
@@ -78,7 +78,7 @@ function Login() {
               return (
                 <button
                   key={p.userId}
-                  onClick={() => signIn(u.id)}
+                  onClick={() => signIn(u.id).catch((err: Error) => setError(err.message))}
                   className="flex items-center gap-2.5 rounded-[12px] border border-border bg-surface px-3 py-2.5 text-left transition-colors hover:border-border-strong hover:bg-surface-2"
                 >
                   <Avatar initials={u.initials} size={30} />

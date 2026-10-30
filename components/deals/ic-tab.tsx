@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { PASS_REASON_LABELS, type DB, type Deal, type ICCondition, type ICEvent } from "@/lib/schema";
 import {
   addIcCondition, answerIcQuestion, askIcQuestion, decideIc, recordVote, removeIcCondition, satisfyCondition, updateIcCondition,
-} from "@/lib/actions";
+} from "@/lib/client/actions";
 import { can } from "@/lib/permissions";
 import { useCurrentUser } from "@/lib/store";
 import { activeTermSet, dealMetrics, fieldValue, sectionIsStale, userById } from "@/lib/selectors";
@@ -155,11 +155,11 @@ function Conditions({ db, deal, editable, canSatisfy }: { db: DB; deal: Deal; ed
                 <div className="flex gap-1">
                   {editable && c.status !== "satisfied" && <button onClick={() => setEditing(c)} className="rounded p-1.5 text-text-3 hover:bg-surface-2 hover:text-text" aria-label="Edit condition"><Pencil size={14} /></button>}
                   {editable && c.status === "proposed" && (
-                    <button onClick={() => { const r = removeIcCondition(c.id); if (!r.ok) toast.error(r.error); else toast("Condition removed", { description: source ? "Its finding is unmitigated again." : undefined }); }}
+                    <button onClick={async () => { const r = await removeIcCondition(c.id); if (!r.ok) toast.error(r.error); else toast("Condition removed", { description: source ? "Its finding is unmitigated again." : undefined }); }}
                       className="rounded p-1.5 text-text-3 hover:bg-danger-soft hover:text-danger" aria-label="Remove condition"><Trash2 size={14} /></button>
                   )}
                   {canSatisfy && c.status === "open" && (
-                    <Button size="sm" variant="outline" onClick={() => { const r = satisfyCondition(c.id); if (!r.ok) toast.error(r.error); else toast.success("Condition satisfied"); }}><Check size={13} />Mark satisfied</Button>
+                    <Button size="sm" variant="outline" onClick={async () => { const r = await satisfyCondition(c.id); if (!r.ok) toast.error(r.error); else toast.success("Condition satisfied"); }}><Check size={13} />Mark satisfied</Button>
                   )}
                 </div>
               </div>
@@ -178,9 +178,9 @@ function ConditionDialog({ db, deal, c, onClose }: { db: DB; deal: Deal; c: ICCo
   const [type, setType] = useState<ICCondition["type"]>(c?.type ?? "pre_close");
   const [owner, setOwner] = useState(c?.ownerUserId ?? deal.leadUserId);
   const [due, setDue] = useState(c?.dueDate ?? deal.expectedClose ?? "");
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const r = c ? updateIcCondition(c.id, { description: text, type, ownerUserId: owner, dueDate: due || undefined }) : addIcCondition(deal.id, text, type, owner, due || undefined);
+    const r = await (c ? updateIcCondition(c.id, { description: text, type, ownerUserId: owner, dueDate: due || undefined }) : addIcCondition(deal.id, text, type, owner, due || undefined));
     if (!r.ok) return toast.error(r.error);
     toast.success(c ? "Condition updated" : "Condition added");
     onClose();
@@ -208,8 +208,8 @@ function Votes({ db, ev }: { db: DB; ev: ICEvent }) {
   const [comment, setComment] = useState("");
   const mine = ev.votes.find((v) => v.userId === user?.id);
   const canVote = !!user && can(user.role, "record_vote") && ev.status === "pending";
-  const vote = (v: (typeof VOTES)[number]["key"]) => {
-    const r = recordVote(ev.id, v, comment);
+  const vote = async (v: (typeof VOTES)[number]["key"]) => {
+    const r = await recordVote(ev.id, v, comment);
     if (!r.ok) return toast.error(r.error);
     toast.success("Vote recorded");
     setComment("");
@@ -261,14 +261,14 @@ function QA({ db, ev }: { db: DB; ev: ICEvent }) {
             {x.answer ? <div className="text-text-2">→ {x.answer}</div> : answering === i ? (
               <div className="flex gap-2">
                 <input autoFocus className={input} value={answer} onChange={(e) => setAnswer(e.target.value)} placeholder="Deal team answer" />
-                <Button size="sm" variant="primary" onClick={() => { const r = answerIcQuestion(ev.id, i, answer); if (!r.ok) return toast.error(r.error); setAnswering(null); setAnswer(""); }}>Save</Button>
+                <Button size="sm" variant="primary" onClick={async () => { const r = await answerIcQuestion(ev.id, i, answer); if (!r.ok) return toast.error(r.error); setAnswering(null); setAnswer(""); }}>Save</Button>
                 <Button size="sm" variant="ghost" onClick={() => setAnswering(null)}><X size={13} /></Button>
               </div>
             ) : canAnswer ? <button onClick={() => setAnswering(i)} className="text-[12px] text-accent hover:underline">Answer</button> : <div className="text-[12px] text-text-3">Awaiting the deal team&apos;s answer</div>}
           </Card>
         ))}
         {canAsk && (
-          <form onSubmit={(e) => { e.preventDefault(); const r = askIcQuestion(ev.id, q); if (!r.ok) return toast.error(r.error); setQ(""); }} className="flex gap-2">
+          <form onSubmit={async (e) => { e.preventDefault(); const r = await askIcQuestion(ev.id, q); if (!r.ok) return toast.error(r.error); setQ(""); }} className="flex gap-2">
             <input className={input} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ask the deal team a question" />
             <Button type="submit" size="md" variant="outline" disabled={!q.trim()}><MessageSquarePlus size={14} />Ask</Button>
           </form>
@@ -294,9 +294,9 @@ function DecisionPanel({ db, deal, ev }: { db: DB; deal: Deal; ev: ICEvent }) {
     defer: ["Records the deferral; the deal stays at IC and a new committee can be scheduled"],
     decline: ["Marks the deal passed (credit quality) with your note", "It stays searchable as a precedent"],
   };
-  const submit = () => {
+  const submit = async () => {
     if (!choice) return;
-    const r = decideIc(ev.id, choice, choice.startsWith("approve") ? Number(hold) : undefined, note);
+    const r = await decideIc(ev.id, choice, choice.startsWith("approve") ? Number(hold) : undefined, note);
     if (!r.ok) return toast.error(r.error);
     toast.success(`IC decision recorded: ${choice.replace(/_/g, " ")}`, { description: choice.startsWith("approve") ? `Term set v${ts?.version} is locked.` : undefined });
     setChoice(null);
@@ -379,7 +379,7 @@ function DevilsAdvocate({ db, deal, ev }: { db: DB; deal: Deal; ev?: ICEvent }) 
               <div className="flex flex-wrap items-center gap-1.5">
                 {q.precedentDealIds.map((id) => { const d = db.deals.find((x) => x.id === id); return d && <Link key={id} href={`/deals/${id}/ic`}><Chip tone="outline">↳ {d.name}</Chip></Link>; })}
                 {canAsk && (asked ? <Chip tone="success"><Check size={11} />In Q&A</Chip> : (
-                  <button className="ml-auto text-[12px] text-accent hover:underline" onClick={() => { const r = askIcQuestion(ev!.id, q.question); if (!r.ok) toast.error(r.error); else toast.success("Added to the Q&A"); }}>Ask at IC</button>
+                  <button className="ml-auto text-[12px] text-accent hover:underline" onClick={async () => { const r = await askIcQuestion(ev!.id, q.question); if (!r.ok) toast.error(r.error); else toast.success("Added to the Q&A"); }}>Ask at IC</button>
                 ))}
               </div>
             </Card>

@@ -1,6 +1,8 @@
 # Covenant
 
-An underwriting workspace for a private credit deal team: deals, companies and people, with the underwriting work (financials, securities, due diligence, IC memo and IC approval) on each deal page, and a chat that answers questions from the fund's own records. It's a demo prototype for the fictional Fernhill Credit Partners; all data lives in the browser.
+> The original Task 1 prototype (all data in the browser) is preserved at tag [`task1-v1`](https://github.com/jesseleone/Covenant/tree/task1-v1).
+
+An underwriting workspace for a private credit deal team: deals, companies and people, with the underwriting work (financials, securities, due diligence, IC memo and IC approval) on each deal page, and a chat that answers questions from the fund's own records. It's a demo for the fictional Fernhill Credit Partners; data lives in Postgres, behind a small server API.
 
 The system explanation is in [`docs/SYSTEM.md`](docs/SYSTEM.md); the Postgres version of the data model is [`docs/schema.sql`](docs/schema.sql).
 
@@ -21,22 +23,29 @@ Covenant takes a deal from a new CIM to an IC-approved, locked set of terms. Dea
 
 Four personas (Analyst, VP, MD, IC member) have different permissions, and every change is written to an audit trail shown in each deal's History tab.
 
-**How it's built:** Next.js and TypeScript, with the data held in an in-browser store (Zustand, saved to localStorage). Claude answers by calling 14 typed query tools that run against that store; the server route only relays requests to the Claude API. See [`docs/SYSTEM.md`](docs/SYSTEM.md) for the architecture and data model.
+**How it's built:** Next.js and TypeScript, with the data in Postgres. Every change goes through a named server action that checks permissions and writes an audit row; the browser keeps a read cache. Claude answers on the server by calling 14 typed query tools against the database. [`docs/SYSTEM.md`](docs/SYSTEM.md) describes the Task 1 design.
 
 ## Run it
 
-Requires Node 20+.
+Requires Node 20+ and Docker (for Postgres).
 
 ```bash
 npm install
 cp .env.example .env.local   # optional: add ANTHROPIC_API_KEY for live AI
+docker compose up -d db      # Postgres 16 on localhost:5433
+npm run db:reset             # create the tables and load the demo data
 npm run dev                  # http://localhost:3000
 ```
+
+`npm run db:migrate` applies new migrations, `npm run db:seed` reloads the demo data, and **Reset demo data** in the app does the same as `db:seed`.
+
+To run the production image: `docker build -t covenant .` then `docker run -p 3000:3000 -e DATABASE_URL=… covenant` (it migrates, and seeds an empty database, on start).
 
 Without an API key, chat and memo regeneration run in **offline mode**: answers are computed deterministically from the same database queries, and the UI says so.
 
 ```bash
-npm test         # 69 unit tests: calculations, stage rules, permissions, actions, chat, seed integrity
+npm test         # unit tests, plus database tests against the covenant_test database (skipped if Postgres isn't running)
+npm run typecheck
 npm run lint
 npm run build
 ```
@@ -71,11 +80,14 @@ Sign in with a quick-pick persona, or with any seeded email and any password. Sw
 |---|---|
 | `lib/schema.ts` | Every entity, as zod schemas and TypeScript types |
 | `lib/seed/` | Seed data; Project Larch (`larch.ts`) is the fully built deal |
-| `lib/store.ts` | The in-browser database (Zustand, saved to localStorage) and the `commit` helper every write goes through |
-| `lib/actions.ts` | The 34 domain actions; each checks permissions and writes an audit event |
+| `db/migrations/` | Postgres schema (plain SQL, applied in order) |
+| `lib/actions.ts` | The 34 domain actions; each checks permissions and writes an audit event. They run on the server |
+| `lib/core/commit.ts` | The `commit` helper every write goes through |
+| `lib/server/` | Postgres access: row mapping, the transaction that runs an action, seed, migrations, chat and memo AI |
+| `lib/store.ts`, `lib/client/actions.ts` | The browser's read cache, and the functions that call actions on the server |
 | `lib/selectors.ts` | Derived values: leverage, cushion, stale memo sections, relationship strength |
 | `lib/gates.ts`, `lib/permissions.ts` | Stage rules and role permissions |
 | `lib/memo.ts`, `lib/render/tokens.ts` | Memo staleness, offline generation, and live-value tokens |
 | `lib/llm/` | Query tools, tool definitions, prompts, client tool loop, offline chat engine |
-| `app/api/llm/route.ts` | Thin proxy to the Claude Messages API (no data held server-side) |
+| `app/api/` | Route handlers: session, database read, named actions, chat, memo regeneration, reset |
 | `components/` | UI by area: `deals/`, `chat/`, `modals/`, `shell/`, `common/`, `ui/` |

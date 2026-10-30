@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Check, CheckCheck, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import type { DB, Deal, ExtractedField } from "@/lib/schema";
-import { confirmAllAbove, confirmField, correctField, findQuote } from "@/lib/actions";
+import { confirmAllAbove, confirmField, correctField, findQuote } from "@/lib/client/actions";
 import { can } from "@/lib/permissions";
 import { useCurrentUser, useDBStore } from "@/lib/store";
 import {
@@ -67,15 +67,15 @@ function ExtractionReview({ db, deal }: { db: DB; deal: Deal }) {
     router.replace(`${pathname}?field=${f.fieldKey}`, { scroll: false });
   };
 
-  const onConfirm = (f: ExtractedField) => {
-    const r = confirmField(f.id);
+  const onConfirm = async (f: ExtractedField) => {
+    const r = await confirmField(f.id);
     if (!r.ok) return toast.error(r.error);
     toast.success(`Confirmed ${f.label}`);
     const next = proposed.find((x) => x.id !== f.id);
     if (next) select(next);
   };
-  const onBulk = () => {
-    const r = confirmAllAbove(deal.id, 0.9);
+  const onBulk = async () => {
+    const r = await confirmAllAbove(deal.id, 0.9);
     if (!r.ok) return toast.error(r.error);
     toast.success(`Confirmed ${r.count} value${r.count === 1 ? "" : "s"} with confidence ≥ 0.90`);
   };
@@ -212,11 +212,11 @@ function CorrectDialog({ db, deal, field, onClose, onDone }: { db: DB; deal: Dea
     }
   };
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (value === null) return;
     const before = snapshot(useDBStore.getState().db, deal.id);
-    const r = correctField(field.id, value, docId, page, note);
+    const r = await correctField(field.id, value, docId, page, note);
     if (!r.ok) return toast.error(r.error);
     const after = snapshot(useDBStore.getState().db, deal.id);
     const changes = [

@@ -11,8 +11,8 @@ import {
 import { chatMessages, chatThreads } from "./chat";
 
 /**
- * Bump when the seed changes: browsers holding an older copy rebuild from the
- * new seed on next load (see lib/store.ts).
+ * Bump when the seed changes. The seed is loaded into Postgres by
+ * `npm run db:seed` / `db:reset` and by "Reset demo data".
  */
 export const SEED_VERSION = 2;
 

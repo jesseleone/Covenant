@@ -6,7 +6,7 @@ import Fuse from "fuse.js";
 import { Check, ExternalLink, FileText, Loader2, Plus, Sparkles, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { COMPANY_TYPES, DEAL_TYPES, PERSON_TYPES, STRATEGIES, STRATEGY_LABELS, type Company, type DB, type Person } from "@/lib/schema";
-import { createCompany, createDeal, createPerson } from "@/lib/actions";
+import { createCompany, createDeal, createPerson } from "@/lib/client/actions";
 import { DUPLICATE_THRESHOLD, findCompanyMatches, findPersonMatches, type Match } from "@/lib/dedupe";
 import { SAMPLE_CIM, SAMPLE_CIM_FIELDS } from "@/lib/seed/sample-cim";
 import { closeNew, useUI } from "@/lib/ui";
@@ -144,9 +144,9 @@ function NewDealModal() {
     }, 520 * (EXTRACT_STEPS.length + 1));
   };
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const r = createDeal({
+    const r = await createDeal({
       name, borrowerCompanyId: borrower.id, newBorrowerName: borrower.id ? undefined : borrower.newName, strategy, dealType,
       sponsorCompanyId: sponsor || undefined, requestedSize: size ? Number(size) : undefined, expectedClose: close || undefined, leadUserId: lead || undefined, sampleCim: sample,
     });
@@ -234,9 +234,9 @@ function NewCompanyModal({ prefillName }: { prefillName?: string }) {
   const byDomain = domain.trim().length > 3 ? db.companies.find((c) => c.domain && c.domain.toLowerCase() === domain.trim().toLowerCase().replace(/^https?:\/\/(www\.)?/, "")) : undefined;
   const dup = byName?.item ?? (byDomain && byDomain.id !== dismissed ? byDomain : undefined);
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const r = createCompany({ name, types, domain, sector, hqCity: hq });
+    const r = await createCompany({ name, types, domain, sector, hqCity: hq });
     if (!r.ok) return toast.error(r.error);
     toast.success(`Created ${name}`);
     closeNew();
@@ -289,9 +289,9 @@ function NewPersonModal() {
   }, [db, name, email, dismissed]);
   const dupAff = dup ? currentAffiliation(db, dup.id) : undefined;
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const r = createPerson({ fullName: name, companyId: company.id, newCompanyName: company.id ? undefined : company.newName, title, email, personType: type, relationshipOwnerId: owner });
+    const r = await createPerson({ fullName: name, companyId: company.id, newCompanyName: company.id ? undefined : company.newName, title, email, personType: type, relationshipOwnerId: owner });
     if (!r.ok) return toast.error(r.error);
     toast.success(`Created ${name}`);
     closeNew();

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { AtSign, Pin, PinOff } from "lucide-react";
 import { toast } from "sonner";
 import { NOTE_TYPES, NOTE_LABELS, type DB, type EntityType, type Note } from "@/lib/schema";
-import { addNote, toggleNotePin } from "@/lib/actions";
+import { addNote, toggleNotePin } from "@/lib/client/actions";
 import { can } from "@/lib/permissions";
 import { useCurrentUser } from "@/lib/store";
 import { userById } from "@/lib/selectors";
@@ -40,9 +40,9 @@ export function NotesPanel({ db, subject, notes, empty = "No notes yet." }: { db
   const [mentions, setMentions] = useState<Note["mentions"]>([]);
   const [picking, setPicking] = useState(false);
 
-  const save = () => {
+  const save = async () => {
     const used = mentions.filter((m) => body.includes(`@${nameOf(db, m.type, m.id)}`));
-    const r = addNote(subject, body, type, used, pinned);
+    const r = await addNote(subject, body, type, used, pinned);
     if (!r.ok) return toast.error(r.error);
     setBody(""); setMentions([]); setPinned(false);
     toast.success("Note added");

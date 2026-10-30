@@ -14,7 +14,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const user = useCurrentUser();
   const router = useRouter();
   const pathname = usePathname();
-  // The shell only renders in the browser (after the stores hydrate), so
+  // The shell only renders in the browser (after the read cache loads), so
   // localStorage is available on first render.
   const [collapsed, setCollapsed] = useState(() => {
     try { return localStorage.getItem(COLLAPSE_KEY) === "1"; } catch { return false; }

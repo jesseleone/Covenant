@@ -12,7 +12,7 @@ import { toast } from "sonner";
 import { PASS_REASONS, PASS_REASON_LABELS, ROLE_LABELS, STAGE_LABELS, type Deal, type PassReason, type Stage } from "@/lib/schema";
 import { evaluateGate, type GateResult } from "@/lib/gates";
 import { canMoveStage } from "@/lib/permissions";
-import { moveStage, nextIcMeeting, reopenDeal, setDealOutcome, type Outcome } from "@/lib/actions";
+import { moveStage, nextIcMeeting, reopenDeal, setDealOutcome, type Outcome } from "@/lib/client/actions";
 import { useCurrentUser, useDB, useDBStore } from "@/lib/store";
 import { Dialog } from "@/components/ui/menu";
 import { Button, cn } from "@/components/ui/primitives";
@@ -27,8 +27,8 @@ export function useStageMover() {
 
   const isOut = (d: Deal) => d.status === "passed" || d.status === "lost" || d.status === "on_hold";
 
-  function doMove(deal: Deal, to: Stage, reason?: string) {
-    const r = moveStage(deal.id, to, reason);
+  async function doMove(deal: Deal, to: Stage, reason?: string) {
+    const r = await moveStage(deal.id, to, reason);
     if (!r.ok) return toast.error(r.error);
     const after = useDBStore.getState().db;
     toast.success(`${deal.name} moved to ${STAGE_LABELS[to]}`, {
@@ -55,8 +55,8 @@ export function useStageMover() {
     setOutcome({ deal, initial });
   }
 
-  function reopen(deal: Deal) {
-    const r = reopenDeal(deal.id);
+  async function reopen(deal: Deal) {
+    const r = await reopenDeal(deal.id);
     if (!r.ok) toast.error(r.error);
     else toast.success(`${deal.name} reopened at ${STAGE_LABELS[deal.stage]}`);
   }
@@ -133,10 +133,10 @@ function OutcomeDialog({ deal, initial, onClose }: { deal: Deal; initial: Outcom
   const needsReason = kind !== "on_hold";
   const valid = note.trim() && (!needsReason || reason);
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!valid) return;
-    const r = setDealOutcome(deal.id, kind, note, needsReason ? reason : undefined);
+    const r = await setDealOutcome(deal.id, kind, note, needsReason ? reason : undefined);
     if (!r.ok) return toast.error(r.error);
     toast.success(`${deal.name} marked ${kind === "on_hold" ? "on hold" : kind}`, { description: "Kept with its reason so it can be found as a precedent." });
     onClose();

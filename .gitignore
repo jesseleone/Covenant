@@ -47,3 +47,6 @@ next-env.d.ts
 
 # local Claude Code settings
 /.claude/
+
+# bundled database script (Dockerfile)
+/dist/

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { MessageSquarePlus, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { useCurrentUser, useDB } from "@/lib/store";
-import { deleteThread, renameThread } from "@/lib/chat";
+import { deleteThread, renameThread } from "@/lib/client/actions";
 import { fmtDateShort } from "@/lib/format";
 import { cn } from "@/components/ui/primitives";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@/components/ui/menu";
