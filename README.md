@@ -1,7 +1,5 @@
 # Covenant
 
-> The original Task 1 prototype (all data in the browser) is preserved at tag [`task1-v1`](https://github.com/jesseleone/Covenant/tree/task1-v1).
-
 An underwriting workspace for a private credit deal team: deals, companies and people, with the underwriting work (financials, securities, due diligence, IC memo and IC approval) on each deal page, and a chat that answers questions from the fund's own records. It's a demo for the fictional Fernhill Credit Partners; data lives in Postgres, behind a small server API.
 
 The system explanation is in [`docs/SYSTEM.md`](docs/SYSTEM.md); the Postgres version of the data model is [`docs/schema.sql`](docs/schema.sql).
